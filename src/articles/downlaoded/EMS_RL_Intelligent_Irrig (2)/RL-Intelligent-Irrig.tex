@@ -1,0 +1,1722 @@
+%% 
+%% Copyright 2007-2024 Elsevier Ltd
+%% 
+%% This file is part of the 'Elsarticle Bundle'.
+%% ---------------------------------------------
+%% 
+%% It may be distributed under the conditions of the LaTeX Project Public
+%% License, either version 1.3 of this license or (at your option) any
+%% later version.  The latest version of this license is in
+%%    http://www.latex-project.org/lppl.txt
+%% and version 1.3 or later is part of all distributions of LaTeX
+%% version 1999/12/01 or later.
+%% 
+%% The list of all files belonging to the 'Elsarticle Bundle' is
+%% given in the file `manifest.txt'.
+%% 
+%% Template article for Elsevier's document class `elsarticle'
+%% with harvard style bibliographic references
+
+%\documentclass[preprint,12pt,authoryear]{elsarticle}
+
+%% Use the option review to obtain double line spacing
+ \documentclass[authoryear,preprint,review,12pt]{elsarticle}
+
+%% Use the options 1p,twocolumn; 3p; 3p,twocolumn; 5p; or 5p,twocolumn
+%% for a journal layout:
+%% \documentclass[final,1p,times,authoryear]{elsarticle}
+%% \documentclass[final,1p,times,twocolumn,authoryear]{elsarticle}
+%% \documentclass[final,3p,times,authoryear]{elsarticle}
+%% \documentclass[final,3p,times,twocolumn,authoryear]{elsarticle}
+%% \documentclass[final,5p,times,authoryear]{elsarticle}
+%% \documentclass[final,5p,times,twocolumn,authoryear]{elsarticle}
+
+%% For including figures, graphicx.sty has been loaded in
+%% elsarticle.cls. If you prefer to use the old commands
+%% please give \usepackage{epsfig}
+
+%% The amssymb package provides various useful mathematical symbols
+\usepackage{amssymb}
+%% The amsmath package provides various useful equation environments.
+\usepackage{amsmath}
+%% The amsthm package provides extended theorem environments
+%% \usepackage{amsthm}
+
+\newtheorem{proof}{Proof}
+\newtheorem{proposition}{Proposition}
+\newtheorem{example}{Example}
+\newtheorem{theorem}{Theorem}
+\usepackage{longtable}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+
+%% The lineno packages adds line numbers. Start line numbering with
+%% \begin{linenumbers}, end it with \end{linenumbers}. Or switch it on
+%% for the whole article with \linenumbers.
+%% \usepackage{lineno}
+
+\journal{Environmental Modelling and Software}
+
+\bibliographystyle{elsarticle-harv}
+
+\begin{document}
+
+\begin{frontmatter}
+
+%% Title, authors and addresses
+
+%% use the tnoteref command within \title for footnotes;
+%% use the tnotetext command for theassociated footnote;
+%% use the fnref command within \author or \affiliation for footnotes;
+%% use the fntext command for theassociated footnote;
+%% use the corref command within \author for corresponding author footnotes;
+%% use the cortext command for theassociated footnote;
+%% use the ead command for the email address,
+%% and the form \ead[url] for the home page:
+%% \title{Title\tnoteref{label1}}
+%% \tnotetext[label1]{}
+%% \author{Name\corref{cor1}\fnref{label2}}
+%% \ead{email address}
+%% \ead[url]{home page}
+%% \fntext[label2]{}
+%% \cortext[cor1]{}
+%% \affiliation{organization={},
+%%            addressline={}, 
+%%            city={},
+%%            postcode={}, 
+%%            state={},
+%%            country={}}
+%% \fntext[label3]{}
+
+%\title{A physics-informed reinforcement learning framework for climate-robust irrigation control} %% Article title
+%\title{A physics-informed reinforcement learning framework for robust irrigation control under climatic uncertainty}
+%\title{A physics-informed reinforcement learning framework for adaptive irrigation control under climatic uncertainty}
+\title{Control-aware physics-informed reinforcement learning for adaptive irrigation under climatic uncertainty}
+
+%% use optional labels to link authors explicitly to addresses:
+%% \author[label1,label2]{}
+%% \affiliation[label1]{organization={},
+%%             addressline={},
+%%             city={},
+%%             postcode={},
+%%             state={},
+%%             country={}}
+%%
+%% \affiliation[label2]{organization={},
+%%             addressline={},
+%%             city={},
+%%             postcode={},
+%%             state={},
+%%             country={}}
+
+\iffalse
+\author[uttop]{Raymond Houé Ngouna} %% Author name
+\author[rv]{Philippe Berton} %% Author name
+\author[rv]{Fabien Dauriac} %% Author name
+
+%% Author affiliation
+\affiliation[uttop]{organization={Université de Technologie de Tarbes Occitanie Pyrénées, Laboratoire Génie de Production},%Department and Organization
+            addressline={47 Avenue d'Azereix}, 
+            city={Tarbes},
+            postcode={65000}, 
+            %state={ },
+            country={France}}
+\affiliation[rv]{organization={Rives et Eaux du Sud-Ouest},%Department and Organization
+            addressline={BP 449 Chemin de Lalette}, 
+            city={Tarbes},
+            postcode={65000}, 
+            %state={ },
+            country={France}}
+%\affiliation[fsud]{organization={Université de Douala, Faculté de Science},%Department and Organization
+ %           addressline={BP}, 
+  %          city={Douala},
+   %         postcode={}, 
+    %        %state={ },
+     %       country={Cameroon}}
+\fi
+
+%% Abstract
+\begin{abstract}
+Decision-making in physical systems often relies on process models. Although interpretable, these models may not accurately represent real-world dynamics. Standard reinforcement learning (RL) methods address uncertainty but can be unreliable, particularly in partially observed systems with slow response times or that are influenced by stochastic external factors. This study proposes a hybrid RL approach that integrates physics-based rules with a residual neural network to manage dynamic irrigation systems. The method explicitly distinguishes hidden physical states from sensor measurements and incorporates learned corrections into the environment model. This enables the controller to adapt when the model diverges from actual system behavior. To preserve physical accuracy and stability, RL is employed for decision-making, while learned corrections address discrepancies in system performance. Three decision-making strategies are evaluated under identical random external conditions: rule-based control, standard RL, and hybrid RL with corrections implemented via Neural Ordinary Differential Equations (ODE). The results indicate that model-based RL improves irrigation efficiency but may induce extreme soil stress. In contrast, the hybrid RL approach substantially mitigates these extreme states while retaining most of the irrigation efficiency, thus optimizing the trade-off between robustness and efficiency. Although demonstrated on an irrigation control system, the proposed method applies to predictive maintenance, building energy management, and other partially observed systems characterized by delays or uncertainty.
+\end{abstract}
+
+%%Graphical abstract
+\begin{graphicalabstract}
+\includegraphics[width=\linewidth]{figures/graphical_abstract.png}
+\end{graphicalabstract}
+
+%%Research highlights
+
+\begin{highlights}
+\item A physics-informed RL framework is proposed for irrigation control.
+\item Rule-based, RL, and hybrid control strategies are compared under identical conditions.
+\item A Neural ODE-inspired residual model is integrated to correct daily prediction errors.
+\item Hybrid control mitigates extreme stress while preserving water-use efficiency within the tested
+soil and climatic parameter settings.
+\end{highlights}
+
+%% Keywords
+\begin{keyword}
+%% keywords here, in the form: keyword \sep keyword
+
+%% PACS codes here, in the form: \PACS code \sep code
+
+%% MSC codes here, in the form: \MSC code \sep code
+%% or \MSC[2008] code \sep code (2000 is the default)
+
+Intelligent irrigation \sep
+Environmental decision support systems\sep
+Control-aware modelling \sep
+Physics-informed reinforcement learning \sep
+Hybrid neuro-physical models \sep
+%Soil-water dynamics \sep
+Adaptive control under uncertainty%\sep
+%Interpretable artificial intelligence
+
+\end{keyword}
+
+\end{frontmatter}
+
+%% Add \usepackage{lineno} before \begin{document} and uncomment 
+%% following line to enable line numbers
+%% \linenumbers
+
+%% main text
+%%
+
+%% Use \section commands to start a section
+
+\section{Introduction}
+\label{sec:intro}
+
+Climate change has led to more frequent and severe weather events, thereby increasing the complexity of water management in agriculture. Irrigation accounts for a significant share of global freshwater consumption and is influenced by variable rainfall, seasonal fluctuations, and complex soil–plant interactions \citep{Siebert2010GroundwaterIrrigation}. Conventional irrigation methods often depend on fixed schedules or expert-defined rules, which lack the adaptability necessary to address changing environmental conditions \citep{PadillaNates2025GreenhouseRL}. Consequently, these methods may lead to inefficient water use, greater drainage losses, and increased crop water stress.
+
+From a modeling perspective, irrigation management represents a complex sequential decision-making problem defined by uncertainty and physical constraints \citep{Shang2018RobustMPCIrrigation}. To address these complexities, researchers have developed models that simulate soil and water processes, frequently utilizing simplified methods such as bucket models or FAO-56-type formulas \citep{Allen1998FAO56, raes2009aquacrop}. These models depend on assumptions and parameterizations that may not adequately represent local soil heterogeneity or the effects of unpredictable weather \citep{portu2025limitations}.
+
+Recent advances in RL have enabled the development of adaptive control methods that learn in complex, unpredictable environments \citep{sutton2018reinforcement}. Therefore, RL is increasingly utilized in irrigation and water management, where it has demonstrated superior water-use efficiency compared to fixed rule-based strategies \citep{Alkaff2025MaizeRL}. RL is particularly suitable for daily decision-making tasks that require adaptation to delayed feedback, while alternative algorithms are generally used for fixed or seasonal planning \citep{Saikai2023DeepRLIrrigation}. However, fully data-driven approaches still face challenges related to interpretability, compliance with physical laws, and operational safety. These issues are especially significant in environmental systems, where interventions may produce delayed and potentially irreversible effects \citep{Liu2023DistributionallyRobustRisk}.
+
+Physics-informed learning improves data-driven models by integrating established physical principles, which enhances model stability and reliability \citep{willard2022integrating}. In this field, Neural Ordinary Differential Equations (Neural ODEs) provide a flexible means to model system components that are insufficiently captured by existing physical models, while preserving interpretability \citep{rackauckas2020universal}. In environmental science, these hybrid models are used not to replace traditional ones, but to correct errors resulting from simplifications, parameter uncertainty, or omitted processes \citep{Ratn2025HybridPhysicsML}.
+
+Most irrigation systems operate on a daily decision-making schedule, relying on sensor data such as soil moisture and rainfall measurements \citep{Tincani2025NeuromorphicSoil}. The effective use of learning-based methods necessitates synchronization among decision timing, data acquisition, and model operation \citep{Nghiem2023PhysicsInformedControl}. In this study, learning is implemented in two principal ways: (i) to guide irrigation decisions using RL, and (ii) to model temporal system dynamics with a neural network inspired by Neural ODEs. This methodology supports adaptive decision-making while preserving model interpretability and computational efficiency, in alignment with available data and system constraints.
+
+Although interest in learning-based irrigation control is growing, several unresolved questions persist. These include the comparative effectiveness of RL and expert rule-based methods when combined with physical models, the capacity of learned models to overcome limitations of traditional approaches, and the influence of increased model–controller integration on interpretability, transferability, and practical deployment. The Environmental Modelling \& Software (EMS) community places increasing emphasis on model transparency, explicit uncertainty management, and reproducible evaluation methodologies \citep{Refsgaard2007UncertaintyEMS, Jakeman2006TenStepsEMS}. This study adheres to these principles by utilizing a structured experimental design, systematically varying soil and weather parameters, and maintaining a clear distinction between training and testing for learning-based controllers.
+
+Accordingly, this study addresses the following research questions:
+
+\begin{itemize}
+\item \textbf{RQ1:} To what extent does RL enhance irrigation control performance relative to expert rule-based strategies when applied to a physics-based soil-water model?
+\item \textbf{RQ2:} To what extent does augmenting the physical model with learned residual dynamics increase the stability and safety of learning-based irrigation control under stochastic climatic forcing?
+\item \textbf{RQ3:} What are the effects of increased model–controller integration on interpretability, transferability, and deployability in environmental decision-support systems?
+\end{itemize}
+
+The primary contributions of this study are as follows:
+\begin{enumerate}
+\item A physics-informed RL framework that formulates irrigation as a finite-horizon sequential decision-making problem under climatic uncertainty, explicitly distinguishing latent physical states from sensor-level observations.
+\item A structured and reproducible comparison of three irrigation control strategies: rule-based control, RL-based control, and hybrid neuro-physical RL control, conducted within a unified physical simulation environment.
+\item The integration of a discrete-time Neural ODE-inspired residual model to correct soil-water balance dynamics, thereby preserving physical consistency and interpretability.
+\item A systematic evaluation under stochastic rainfall and evapotranspiration forcing, which highlights trade-offs among water-use efficiency, stress avoidance, and drainage losses as functions of soil and meteorological parameterisation.
+\item A transferable modelling and control framework intended to facilitate future integration of real sensor data and extension to other environmental systems that require adaptive control under uncertainty.
+\end{enumerate}
+
+The remainder of this paper is organized as follows. Section~\ref{sec:related_work} reviews research on irrigation modeling, rule-based control, RL, and hybrid physics-informed approaches. Section~\ref{sec:methods} describes the materials and methods, including problem formulation, simulated data sources, the physical environment, control scenarios, and experimental design. Section~\ref{sec:results_discussion} presents and discusses the results for each scenario, focusing on parameter sensitivity and performance trade-offs. Section~\ref{sec:conclusion} concludes the paper and outlines directions for future research.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Related Work}
+\label{sec:related_work}
+
+This section reviews literature on irrigation modelling and control, emphasizing the progression from process-based and rule-based methods to contemporary learning-based and hybrid physics-informed approaches. This study integrates neural ordinary differential equations with adaptive RL to enhance the robustness of irrigation control under changing climatic conditions, an area that has received limited attention in previous research works. The aim is to position this study within the broader field of environmental modelling and to identify the particular gaps that the proposed approach is designed to address.
+
+\subsection{Process-based modelling of irrigation systems}
+
+Process-based models are fundamental tools in irrigation modelling, representing interactions among soil, water, and plants through basic physical principles and evapotranspiration formulas \citep{bo2024process}. Examples include simple bucket models and FAO-56 methods, as implemented in tools such as AquaCrop \citep{raes2009aquacrop}. These models are transparent, require minimal data, and are therefore valuable for scenario comparison and policy research \citep{starke2020artificial}.
+
+However, process-based models rely on simplified assumptions regarding soil heterogeneity, root water uptake, and boundary conditions. Their predictive accuracy declines under highly variable or extreme weather conditions, as they are unable to capture all relevant complexities and uncertainties \citep{Verbruggen2025LPJGUESS}. Recent studies indicate that, although these physical models are essential, they are insufficient on their own for effective irrigation management in a changing climate \citep{fatichi2016ecosystem, seneviratne2021weather}.
+
+\subsection{Rule-based and heuristic irrigation control}
+
+Rule-based irrigation methods, frequently derived from expert recommendations or agricultural guidelines, remain widely used. These systems employ fixed thresholds for soil moisture, crop stress, or water loss. Their simplicity, transparency, and ease of implementation make them advantageous in data-scarce environments \citep{Fereres2007DeficitIrrigation}.
+
+However, these rule-based systems lack adaptability to changing climatic conditions \citep{PadillaNates2025GreenhouseRL}. Research demonstrated that fixed rules are often ineffective under unpredictable rainfall or when soil response is delayed, motivating the exploration of adaptive control methods \citep{jones2022irrigationreview}. Consequently, rule-based control is now primarily regarded as an initial approach rather than a sustainable solution for climate-resilient irrigation.
+
+\subsection{RL for irrigation and water management}
+
+RL is a versatile framework for sequential decision-making in dynamic and uncertain environments \citep{sutton2018reinforcement}. In water management, RL has been applied to reservoir operation, canal control, and irrigation planning. Numerous studies have shown that RL can outperform fixed rule-based systems \citep{yang2021rlwater, giuliani2021rlreservoirs}.
+
+Despite these successes, data-driven RL methods also face significant challenges in environmental applications. They typically require extensive training data, may violate physical constraints, and can yield solutions that are difficult to interpret or trust \citep{Li2022DLIrrigationReview}. Recent reviews have highlighted that ensuring physical consistency and reliability remains a major obstacle for RL in environmental systems \citep{rolnick2022tackling, reichstein2019deep}.
+
+In environmental modelling, adaptive control and policy search methods have been investigated to support decision-making under uncertainty and multiple objectives. Policy search approaches offer systematic means to balance robustness, efficiency, and risk in water management \citep{Giuliani2016PolicySearchEMS}. Specialized algorithms, such as the Borg framework, can identify diverse optimal control strategies for multi-objective environmental problems \citep{Hadka2013BorgEMS}.
+
+Within this context, RL is considered a valuable complement rather than a replacement for existing decision-making approaches in environmental management. RL shares conceptual similarities with policy search and multi-objective optimization but offers advantages in leveraging temporal information and managing delayed system responses \citep{PadillaNates2025GreenhouseRL}.
+
+\subsection{Physics-informed and hybrid learning approaches}
+
+To address the previously outlined challenges, physics-informed machine learning has become increasingly important. This approach incorporates physical knowledge into data-driven models. Research has demonstrated that integrating physical constraints enhances model performance, stability, and interpretability, particularly in data-limited scenarios \citep{willard2022integrating, karniadakis2021physics}.
+
+Neural ODEs provide an effective means of integrating data-driven and physical models. They enable neural networks to approximate unknown or unmodeled components in continuous-time systems \citep{rackauckas2020universal}. In environmental science, Neural ODEs and related techniques are increasingly employed to augment, rather than replace, physical models, thereby maintaining interpretability while improving accuracy \citep{rackauckas2021sciml, shamekh2023implicit}.
+
+\subsection{Hybrid modelling for control under uncertainty}
+
+Physics-informed learning has been extensively studied for system identification and prediction, but its integration with RL for control in environmental modelling remains limited. Recent research on safe and model-based RL underscores the importance of incorporating physical constraints to enhance control reliability and prevent unsafe or unrealistic solutions \citep{berkenkamp2017safe, perkins2023safeRL}.
+
+Few studies have systematically compared rule-based control, RL, and hybrid neurophysical control within a unified modelling framework. This research addresses this gap by evaluating these methods under identical physical and meteorological conditions, thereby ensuring fair and reproducible results. Each approach utilizes the same foundational data, such as evapotranspiration rates, soil type, and initial moisture, and is subjected to the same weather scenarios. The application of Neural ODEs to capture unmodeled dynamics and enhance irrigation control robustness under climate variability remains underexplored \citep{Hoge2022NeuralODEHydrology}. Accordingly, this study investigates control strategies that increase model complexity within a physics-based irrigation context.
+
+Policy search and multi-objective optimization methods have also been applied to irrigation management \citep{Giuliani2016PolicySearchEMS, giuliani2021rlreservoirs}; however, this study distinguishes itself through the control setup and model construction. While most policy search approaches emphasize fixed or seasonal strategies, the present work focuses on daily control with real-time feedback and delayed system responses. The proposed framework explicitly separates the effects of learning-based control and model correction by comparing rule-based, RL, and hybrid neuro-physical methods under consistent conditions. This experimental design enables a controlled and transparent comparison of how increasing levels of learning and model integration affect irrigation system behavior. In contrast to prior studies that primarily emphasize aggregate performance gains, the proposed framework allows simultaneous assessment of performance, stability, and interpretability across scenarios under identical physical and climatic forcing.
+
+Performance is evaluated using cumulative irrigation volumes, water-use efficiency, and drainage losses. Stability is assessed through the temporal smoothness of irrigation actions and the presence or absence of extreme soil-water tension excursions. Interpretability is examined qualitatively by comparing the structural complexity of the control mechanisms, ranging from explicit rule-based decisions to learned policies and residual corrections, and their consistency with known soil–water dynamics.
+
+Together, these complementary metrics provide a coherent basis for analyzing how learning-based and hybrid approaches address key limitations of traditional rule-based irrigation control, particularly with respect to robustness under climatic variability and transparency of decision-making.\citep{Huang2025SmartIrrigationVision}.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+\section{Materials and Methods}
+\label{sec:methods}
+
+This section details the materials and methods used in the study. The system dynamics, study scope, and data sources are first clarified. The irrigation management problem is then formulated. The physics-based soil–water environment for simulating daily dynamics is described, along with the three control scenarios: rule-based control, RL, and hybrid neuro-physical RL. The experimental design, training procedures, and evaluation protocols are provided to ensure reproducibility and enable fair comparison across control strategies.
+
+\subsection{Soil–water dynamics and physical assumptions}
+
+Figure~\ref{fig:soil_water_physics} illustrates the main physical processes represented in the soil–water balance model used in all scenarios. The model treats the root zone as a control volume, accounting for water inputs from rainfall and irrigation, changes in storage, and losses due to evapotranspiration and drainage. Rainfall is treated as an external climate input, while irrigation is considered a management action. Both inputs contribute to soil-water storage, which is constrained by the soil's physical capacity.
+
+\begin{figure}[!htb]
+    \centering
+    \includegraphics[width=0.7\linewidth]{figures/soil_water_physics.png}
+    \caption{Schematic representation of the soil-water balance processes considered in the physical model, including water inputs from rainfall and irrigation, losses due to evapotranspiration (evaporation and transpiration), and drainage from the root zone.}
+    \label{fig:soil_water_physics}
+\end{figure}
+
+Water losses are represented as evapotranspiration, which combines soil evaporation and plant transpiration into a single simplified process. This process is influenced by atmospheric demand and soil-water availability. Reference evapotranspiration is calculated from weather data and adjusted using crop coefficients and stress functions to reflect plant responses under water-limited conditions, following standard practice \citep{Allen1998FAO56, Monteith1965Evap}. This methodology is widely used in irrigation models and crop simulation tools, as it provides a straightforward yet realistic depiction of land–atmosphere exchanges \citep{raes2009aquacrop}.
+
+Drainage occurs when soil-water storage exceeds field capacity, causing water to move out of the root zone and become unavailable to crops. Conceptual models typically represent this process using threshold-based or linear drainage functions, which capture the influence of soil properties without explicitly modeling the full vertical flow \citep{RodriguezIturbe2001Ecohydrology}.
+
+The soil is modeled as a single, uniform root-zone compartment with fixed storage capacity and a simplified relationship between soil-water storage and matric potential. This bucket-like model omits vertical heterogeneity, specialized flow paths, layered soil properties, and lateral water movement. While these simplifications improve usability, they do not capture actual soil processes that affect water retention and drainage. As a result, irrigation schedules applied to real conditions may be less accurate, since real soils are often layered and complex. Including these complexities would increase model difficulty and reduce interpretability. Therefore, a simplified model is chosen for clarity, with the understanding that this reduces realism \citep{Vereecken2007SoilReview, fatichi2016ecosystem}. Previous research has shown that this approach can overestimate or underestimate water availability by 10–20\% compared to more detailed models, emphasizing the need for calibration and sensitivity analysis when interpreting results.
+
+Soil differences and nonlinear water movement create "memory effects”, where past rainfall, irrigation, and evapotranspiration influence water availability over several days or weeks. These slow responses complicate estimation of the soil state and irrigation control, particularly under unpredictable weather and limited sensor data \citep{Seneviratne2010SoilClimate}. Fully capturing these effects requires complex multi-layer or detailed ecohydrological models (\ref{app:two_layer_bucket}; \ref{app:ecohydro_ladder}), which are computationally demanding and difficult to integrate with learning-based controllers.
+
+The use of a simple model in this study is therefore a deliberate choice. By employing a straightforward, daily soil–water balance model, the performance of different control strategies and learning methods under uncertainty can be evaluated. This approach facilitates integration with RL and hybrid methods, while retaining the key water processes relevant for irrigation decisions. Consequently, all control and learning strategies are tested within the same physics-based environment, ensuring that performance differences are attributable to controller design rather than the physical model.
+
+\ref{app:model_positioning} provides a comparative analysis of the purposes and control compatibility of alternative soil–water modelling formulations. \ref{app:stability} demonstrates the stability and well-posedness of these formulations.
+
+\subsection{Data sources and scope of the study}
+\label{subsec:data_sources}
+
+The study employs data generated by a physics-based soil–water balance model driven by stochastic climate inputs. This simulation-based methodology enables controlled experimentation, systematic evaluation of management strategies, and reproducibility across diverse hydroclimatic conditions, while minimizing the influence of confounding factors such as limited data availability, measurement noise, and site-specific calibration requirements.
+
+The simulated environment produces daily trajectories of rainfall, reference evapotranspiration, soil-water storage, and soil matric potential (tension), which together define the \textit{state} and \textit{observation} variables for the control algorithms. In all scenarios, irrigation decisions are evaluated using identical simulated physical dynamics and weather realizations, ensuring fair and consistent comparisons across control strategies. They defined the \textit{action} variable.
+
+Although the study is based on simulated data, the proposed framework is explicitly designed for transferability to real irrigation systems. In practice, soil-water storage is not directly measurable; instead, soil-water status is monitored using tensiometers that record soil matric potential $\psi_t$. For real-world implementation, simulated $\psi_t$ values can be substituted with tensiometer measurements.% by following a standardized procedure that integrates these readings into the control scheme. 
+Rainfall data can be sourced from on-site rain gauges or open-access meteorological datasets, such as those provided by national weather services. The observation structure, based on $\psi_t$ and climatic variables, is constructed to accommodate these practical constraints.
+
+Successful field deployment requires addressing several specific considerations: tensiometers must be calibrated and maintained to ensure accurate readings; real-time measurements should be integrated into a centralized data aggregation system accessible to the control framework. Key challenges include maintaining sensor connectivity and data accuracy across large agricultural areas. Investment in robust communication networks or cloud-based platforms may be necessary to support reliable data flow.
+
+Potential discrepancies between simulated and real-world conditions, such as variability in soil properties and small-scale climatic differences, require site-specific tuning of control model parameters. The implementation of this study provides user-friendly interface to address this issue. Collaboration with stakeholders is essential to address practical considerations, including equipment costs, training requirements, and sustained user participation. This research is being carried out in partnership with Rives et Eaux du Sud-Ouest (Tarbes, France), a company that focuses on the design and safety of hydraulic infrastructure to promote the long-term, equitable use of water resources. The skills of its engineers and technicians are mobilized to inform public policy and contribute to the ecological transition of local territories. This partnership include further conducting a pilot study to verify system effectiveness under actual field conditions, and using API weather service, before large-scale deployment.
+
+\subsection{Problem formulation}
+\label{sec:problem_formulation}
+
+This subsection introduces a unified mathematical formulation of the irrigation control problem underlying all scenarios in this study. Irrigation management is formalized as a finite-horizon sequential decision-making process, explicitly distinguishing between (i) the latent physical state of the soil-water system, (ii) the observable variables available to the controller, and (iii) the control actions constrained by agronomic and operational limits. This formulation establishes a common reference framework for rule-based control, RL, and hybrid neurophysical approaches, ensuring that performance differences arise from the control strategy rather than discrepancies in system representation.
+
+\subsubsection{System and time discretization}
+
+The analysis focuses on a single agricultural plot over a growing season of length $T$ days, discretized into daily decision steps $t \in \{0,\dots,T-1\}$. Irrigation decisions are made once per day, consistent with the temporal resolution of meteorological forcing and the operational granularity targeted in this study.
+
+Let $S_t$ (mm) denote the \emph{latent} root-zone soil-water storage at day $t$, representing the amount of plant-available water in the effective root zone. The term \emph{latent} indicates that this variable is not directly measurable in typical operational settings. Instead, soil-water status is monitored using tensiometers that provide soil matric potential (tension) $\psi_t$ (cbar), which serves as the primary observable variable.
+
+The soil-water retention curve defines the link between latent storage and observed tension:
+\begin{equation}
+\psi_t = f_{\mathrm{ret}}(S_t),
+\qquad
+S_t = f_{\mathrm{ret}}^{-1}(\psi_t),
+\label{eq:retention_pair}
+\end{equation}
+where $f_{\mathrm{ret}}(\cdot)$ is a soil-specific monotonic mapping determined by the hydraulic properties.
+
+\paragraph{Simulator-accessible state}
+
+For controlled benchmarking, the simulation environment internally maintains and updates the soil-water storage $S_t$. In Scenarios 2 (RL) and Scenario 3 (hybrid physics-informed control), $S_t$ may be included in the agent's observation vector to isolate the effect of the control strategy under identical physical dynamics and climatic forcing. This variable is not directly measurable in operational settings and is therefore considered simulator-accessible rather than sensor-accessible. 
+
+Addressing partial observability requires exploring filtering techniques, such as Kalman filtering, or implementing recurrent policies that utilize historical observation data. Preliminary results indicate that incorporating belief-state estimation can improve control accuracy under limited data availability. However, challenges remain in designing efficient filtering strategies that operate within the constraints of real-time decision-making and field variability.
+
+The proposed configuration offers an upper-bound assessment of learning-based control performance rather than a deployable solution. In practical applications, controllers rely on sensor-level observations such as soil-water tension, rainfall, and reference evapotranspiration. Extensions to partially observable settings, including belief-state estimation or recurrent policies, are identified as directions for future research. This setting provides an upper-bound benchmark rather than a deployable configuration.
+
+
+\subsubsection{Climate drivers}
+Daily climate inputs include rainfall $R_t$ (mm), reference evapotranspiration $ET0_t$ (mmday$^{-1}$), and the crop coefficient $Kc_t$ (dimensionless). We summarize these external factors as follows:
+\begin{equation}
+d_t := (R_t, ET0_t, Kc_t).
+\end{equation}
+We treat these variables as random disturbances drawn from a distribution that may change over time:
+\begin{equation}
+d_t \sim \mathcal{P}_d.
+\label{eq:climate_uncertainty}
+\end{equation}
+
+\subsubsection{Physics-based dynamics (mass balance)}
+A bucket-style soil-water mass balance model describes how water moves in the root zone:
+\begin{equation}
+S_{t+1}
+=
+\mathrm{clip}\!\left(
+S_t
++ \eta_I I_t
++ R_t
+- ET_{c,t}
+- D_t,\;
+0,\; S_{\max}
+\right).
+\label{eq:bucket_balance}
+\end{equation}
+Here, $I_t$ (mm) is the irrigation depth applied as the control action, $\eta_I$ (between 0 and 1) is the irrigation efficiency, $S_{max}$ is the maximum allowed storage, and $clip(\dot)$ keeps values within physical limits. Drainage is calculated as:
+\begin{equation}
+D_t := D(S_t),
+\end{equation}
+Drainage usually occurs when storage goes above field capacity. Crop evapotranspiration is calculated using a method based on FAO guidelines:
+\begin{equation}
+ET_{c,t} = Kc_t \, ET0_t \, f_{ET}(\psi_t).
+\label{eq:etc_def}
+\end{equation}
+Here, $f_{ET}(\psi_t)$ (ranging from 0 to 1) is a factor that reduces evapotranspiration based on soil tension. The next day's tension is calculated from storage using Eq.~\eqref{eq:retention_pair}.
+
+
+\subsubsection{Sequential decision-making and objective}
+Each day $t$, the controller chooses how much water to apply for irrigation:
+\begin{equation}
+I_t \in [0, I_{\max}].
+\end{equation}
+Here, $I_{\max}$ (mm) is the maximum amount of irrigation allowed per day.
+
+The controller receives an observation vector $\mathbf{o}_t$. In this study, we used a compact and physically meaningful representation (set of variables):
+\begin{equation}
+\mathbf{o}_t =
+\begin{cases}
+(\psi_t,\; R_t,\; ET0_t) & \text{(sensor-level baseline)},\\
+(\psi_t,\; S_t,\; R_t,\; ET0_t) & \text{(simulator benchmarking)}.
+\end{cases}
+\label{eq:obs_def}
+\end{equation}
+Consequently, the problem remains partially observed in real-world operations. An MDP based on available observations is employed to ensure practicality and comparability. Extensions for partial observability are discussed in Section~\ref{sec:results_discussion}.
+
+The goal of the control is to reduce crop water stress, reduce irrigation water use, and minimize water losses. We define the daily reward as:
+\begin{equation}
+r_t
+=
+- \Big(
+\alpha \, \mathcal{L}_{\mathrm{stress}}(\psi_t)
++ \beta \, I_t
++ \gamma \, D_t
+\Big).
+\label{eq:reward}
+\end{equation}
+Here, $\mathcal{L}_{\mathrm{stress}}(\psi_t)$ adds a penalty for too much tension, and $\alpha,\beta,\gamma>0$ set the balance between avoiding stress, irrigation cost, and drainage loss. The expected discounted return measures how well a policy $\pi$ performs:
+\begin{equation}
+J(\pi)
+=
+\mathbb{E}_{\pi}\!\left[
+\sum_{t=0}^{T-1} \gamma^t r_t
+\right].
+\label{eq:return}
+\end{equation}
+The discount factor $\gamma$ is between 0 and 1. We considered the average outcome over random climate changes. This approach is common in RL \citep{sutton2018reinforcement} and is well-suited to decision-making in uncertain environments.
+
+\subsection{Physics-based irrigation environment}
+\label{sec:environment}
+
+All scenarios utilize the same physics-based environment, as defined by Eqs.~\eqref{eq:bucket_balance}--\eqref{eq:etc_def}. Each episode represents a complete growing season. The environment provides daily observations (Eq. ~\eqref{eq:obs_def}), accepts a constrained irrigation action $I_t$, updates the latent storage $S_t$, computes $\psi_t$ using the retention curve, and generates the reward specified in Eq.~\eqref{eq:reward}. Weather inputs $(R_t,ET0_t,Kc_t)$ were generated from a stochastic weather process with fixed seeds to ensure reproducibility.
+
+\subsection{Control scenarios}
+\label{sec:control_scenarios}
+
+Three irrigation control scenarios were examined, each incorporating progressively greater learning and model integration. All scenarios share identical soil-water dynamics, climate inputs, action constraints, and evaluation protocols. The primary distinction lies in the design of the irrigation controller and, in the third scenario, the representation of system dynamics. Scenario 3 introduces a Neural ODE-inspired correction, implemented in discrete time to align with daily decision intervals.
+
+\subsubsection{Scenario~1: Rule-based control (physics)}
+\label{sec:scenario1}
+Scenario 1 uses the physics-based environment with a fixed rule-based policy, similar to common real-world practices. This zero-learning control acts as a baseline for comparing more advanced learning methods. Each day, the rule uses the current tension and a simple one-day rainfall forecast to decide on irrigation.
+
+Parameterized rule families (single-threshold, comfort-band, proportional) were considered, each defined by fixed thresholds and dose parameters. The season is simulated by iterating the physics-based update (Eq. ~\eqref{eq:bucket_balance}) from an initial condition at field capacity $S_0=S_{\mathrm{fc}}$, with $\psi_0=f_{\mathrm{ret}}(S_0)$.
+
+This scenario is easy to interpret and low-cost, and it is robust because its parameters remain constant across seasons. However, it does not adapt or optimize for changing conditions.
+
+\subsubsection{Scenario~2: RL with a physics-based environment (physics + PPO)}
+\label{sec:scenario2}
+
+Scenario~2 replaces fixed heuristics with a policy learned through RL via direct interaction with the physics-based environment. The agent observes $\mathbf{o}_t$ (Eq. ~\eqref{eq:obs_def}), selects a continuous irrigation depth $I_t \in [0,I_{\max}]$, and receives a reward $r_t$ (Eq. ~\eqref{eq:reward}) and experience transitions induced by the process model (Eq. ~\eqref{eq:bucket_balance}).
+
+\paragraph{Learning algorithm}
+We used Proximal Policy Optimization (PPO), an on-policy policy-gradient method with clipped updates and generalized advantage estimation. Both the policy and value functions were parameterized as multilayer perceptrons. Training proceeds over many simulated seasons under stochastic forcing, with explicit random seeds controlling both the climate realization and the timing of learning initiation. Scenario~2 serves as a learning-based baseline that isolates the effect of RL when the environment dynamics are purely physics-based (no learned correction).
+
+\subsubsection{Scenario~3: Hybrid neuro-physical control (physics + residual correction + PPO)}
+\label{sec:scenario3}
+
+Scenario 3 adds a learned correction to the physics-based environment to fix systematic model errors, while keeping the mass-balance structure. This hybrid update is done in \emph{tension space}, matching how tensiometers monitor soil.
+
+\paragraph{Hybrid transition with residual correction}
+First, the physical model computes the nominal next-day storage and tension as follows:
+\begin{align}
+S_{t+1}^{\mathrm{phys}}
+&=
+\mathrm{clip}\!\left(
+S_t + \eta_I I_t + R_t - ET_{c,t} - D_t,\; 0,\; S_{\max}
+\right),\\
+\psi_{t+1}^{\mathrm{phys}} &= f_{\mathrm{ret}}(S_{t+1}^{\mathrm{phys}}).
+\end{align}
+
+The residual model then predicts an additive correction as follows:
+\begin{equation}
+\Delta \psi_t = f_\theta(\psi_t, I_t, R_t, ET0_t),
+\label{eq:delta_psi}
+\end{equation}
+and the hybrid prediction is
+\begin{equation}
+\psi_{t+1} = \psi_{t+1}^{\mathrm{phys}} + \Delta \psi_t,
+\qquad
+S_{t+1} = f_{\mathrm{ret}}^{-1}(\psi_{t+1}).
+\label{eq:hybrid_update}
+\end{equation}
+This maintains consistency between the corrected tension and the permissible storage by applying the inverse retention curve.
+
+\paragraph{Residual model architecture}
+In this implementation, $f_\theta$ is a lightweight multilayer perceptron with two hidden layers of 64 units and $\tanh$ activations, mapping a four-dimensional input $[\psi_t,I_t,R_t,ET0_t]^\top$ to a scalar output $\Delta\psi_t$.
+
+\paragraph{Residual training (pretraining)}
+The residual model was pretrained using supervised regression on simulated trajectories. For each sample, the inputs are:
+\begin{equation}
+\mathbf{x}_t = [\psi_t,\ I_t,\ R_t,\ ET0_t]^\top,
+\end{equation}
+and the targets are defined as the discrepancy between a perturbed ``reference'' next-day tension and the nominal physical prediction:
+\begin{equation}
+y_t = \psi_{t+1}^{\mathrm{ref}} - \psi_{t+1}^{\mathrm{phys}}.
+\end{equation}
+
+In this setup, $\psi_{t+1}^{ref}$ is generated by introducing random perturbations to the physical update, simulating unknown processes and measurement noise (see Figure \ref{fig:scenarios_architecture}). The magnitude and nature of these perturbations are selected to reflect realistic uncertainties in soil-water dynamics, such as variations in evapotranspiration, drainage, and irrigation efficiency, based on studies of soil and environmental variability. Model parameters were trained using the Adam optimizer with a robust regression loss (Smooth L1). After pretraining, $f_{\theta}$ remains fixed and is utilized during RL training.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{figures/graphical_methodo.png}
+    \caption{Overview of the three irrigation control scenarios considered in this study. Scenarios are ordered by increasing learning involvement and model–controller coupling. All scenarios share a common climatic forcing and a physics-based soil-water model, while differing in the irrigation decision mechanism and, in Scenario~3, in the representation of system dynamics.}
+    \label{fig:scenarios_architecture}
+\end{figure}
+
+\paragraph{Generation of reference trajectories and perturbation structure}
+The residual dynamics model is pretrained using reference trajectories generated from a perturbed version of the physics-based soil–water model. These perturbations are designed to emulate plausible sources of model mismatch rather than to represent measurement noise or an alternative high-fidelity simulator.
+
+Specifically, three classes of perturbations are introduced:
+\begin{itemize}
+    \item \textit{Evapotranspiration stress response}: the stress reduction function $f_{ET}(\psi_t)$ is modified by a season-consistent bias term and a low-amplitude stochastic fluctuation, reflecting uncertainty in crop response and soil–plant interactions.
+
+    \item \textit{Drainage sensitivity}: the drainage function $D(S_t)$ is perturbed by varying its effective slope near field capacity, emulating unresolved soil heterogeneity and preferential flow pathways.
+
+    \item \textit{Irrigation efficiency}: the effective irrigation efficiency $\eta_I$ is perturbed by a multiplicative factor that remains constant over a season, representing spatial variability and operational uncertainty.
+\end{itemize}
+
+The perturbations include both stochastic components and persistent biases that remain throughout each simulated season. This design ensures that the differences are temporally correlated and hydrologically meaningful, rather than representing mere random noise.
+
+The reference next-day soil-water tension $\psi_{t+1}^{\mathrm{ref}}$ is then obtained by propagating the perturbed model forward in time, while the nominal physical prediction $\psi_{t+1}^{\mathrm{phys}}$ is computed using the unperturbed model. The residual target is defined as:
+\begin{equation}
+\Delta \psi_t = \psi_{t+1}^{\mathrm{ref}} - \psi_{t+1}^{\mathrm{phys}}.
+\end{equation}
+
+This residual learning approach does not attempt to replicate an alternative physical model. Instead, it enables the neural correction to address persistent, significant discrepancies that arise when simple soil–water models are subjected to stochastic climate inputs.
+
+\paragraph{Discrete-time integration choice}
+Although we refer to this module as a ``Neural ODE'' for consistency with project terminology, the implemented residual correction is \emph{discrete-time}: the network predicts the one-day correction $\Delta\psi_t$ directly (Eq. ~\eqref{eq:delta_psi}).%, and no continuous-time ODE solvers are invoked. 
+This choice (i) aligns with the daily forcing and decision frequency, (ii) reduces the computational overhead to a single forward pass per day, and (iii) avoids solver-induced numerical issues. Continuous-time residual formulations and higher-frequency data assimilation are considered extensions of this approach.
+
+\paragraph{RL on the hybrid environment}
+A PPO agent is then trained on the hybrid environment using the same reward structure as Scenario~2 (Eq. ~\eqref{eq:reward}). This isolates the benefit of correcting the dynamics-level mismatch while keeping the policy-learning mechanism unchanged.
+
+\subsection{Experimental design and evaluation protocol}
+\label{sec:experimental_design}
+
+This section details the experimental design and evaluation protocol, ensuring that comparisons among the three control scenarios are fair, transparent, and reproducible. The experimental setup isolates the effects of the control method from those of the physical model and weather. All experiments utilize the same environment, weather generation process, and evaluation metrics, with only the control method varying. The protocol emphasizes reproducibility, controlled stochasticity, and consistent performance assessment across runs. Hyperparameters such as learning rate, discount factor, and clipping range are tuned for stability. Stability is mathematically demonstrated in \ref{app:stability}, %assessed by monitoring convergence and variance, 
+showing a robust configuration for all scenarios. The reported hyperparameters are selected from a stable region identified during initial tuning and are not specifically optimized for each scenario.
+
+
+\subsubsection{Configuration-driven reproducibility}
+
+To ensure transparency and repeatability, all parameters are maintained within a centralized configuration module. This structure separates (i) environment settings (season length $T$, $I_{\max}$, seeds), (ii) soil settings ($S_{\max}$, $S_{\mathrm{fc}}$, retention curve, drainage, and efficiency $\eta_I$), (iii) weather settings (ET0 seasonality and rainfall generator), and (iv) training settings (total PPO steps). This configuration enables controlled sensitivity analyses and adheres to EMS best practices for reproducible environmental modeling.
+
+\subsubsection{Training and evaluation separation}
+\label{subsec:training_evaluation}
+
+To ensure fair, transparent, and repeatable comparisons, controller setup, training (where applicable), and evaluation are strictly separated for all scenarios. Although only Scenario 2 and Scenario 3 involve learning, all scenarios are evaluated under identical physical, soil, and weather conditions, using consistent performance metrics.
+
+\paragraph{Scenario 1: Physics-based model with rule-based irrigation control}
+Scenario~1 implements a baseline irrigation strategy considering expert-defined rules interacting with a physics-based soil-water bucket model. This scenario serves as a reference case, isolating the effect of heuristic control without any learning or adaptive policy optimization.
+
+The simulation is defined over a growing season of fixed length \(T\) (days), with climatic forcing generated deterministically from a prescribed random seed. Daily weather inputs include rainfall \(R_t\), reference evapotranspiration \(\mathrm{ET0}_t\), and crop coefficient \(K_c(t)\). The soil system is represented by a conceptual bucket model parameterized by a water retention curve, a drainage function, and an irrigation efficiency coefficient \(\eta_I\). Unless specified otherwise, default soil parameters are used.
+
+At the beginning of the season, soil-water storage is initialized at field capacity,
+\begin{equation}
+S_0 = S_{\mathrm{fc}},
+\end{equation}
+and converted to soil-water tension via the retention relationship \(\psi_0 = S \rightarrow \psi(S_0)\).
+
+At each day \(t\), irrigation is determined by a predefined rule function
+\begin{equation}
+I_t = g(\psi_t, I_{\max}, \widehat{R}_{t+1}),
+\end{equation}
+where \(\psi_t\) denotes the current soil-water tension, \(I_{\max}\) is the maximum admissible daily irrigation depth, and \(\widehat{R}_{t+1}\) is a one-day-ahead rainfall forecast (when available). The rule function may implement a single tension threshold or a comfort-band strategy, and internally clips the action to the feasible range \(I_t \in [0, I_{\max}]\).
+
+The physical soil-water dynamics are then updated using a deterministic method. Crop evapotranspiration is computed as
+\begin{equation}
+\mathrm{ETc}_t = K_c(t)\,\mathrm{ET0}_t\, f_{\mathrm{ET}}(\psi_t),
+\end{equation}
+where \(f_{\mathrm{ET}}(\psi_t)\) is a stress reduction factor derived from the soil model. Drainage losses \(D_t\) occur when soil storage exceeds field capacity. The daily water balance is given by
+\begin{equation}
+S_{t+1} = \mathrm{clip}\!\left(
+S_t + \eta_I I_t + R_t - \mathrm{ETc}_t - D_t,\;
+0,\; S_{\max}
+\right),
+\end{equation}
+with \(\mathrm{clip}(\cdot)\) enforcing physical bounds on soil-water storage. The updated soil-water tension is obtained via the inverse retention relation \(\psi_{t+1} = S \rightarrow \psi(S_{t+1})\).
+
+This procedure is repeated sequentially for \(t = 0,\dots,T-1\), producing time series of soil storage, soil tension, irrigation, evapotranspiration, and drainage. All actions are fully determined by the irrigation rule and the current system state; no policy network, learning mechanism, or optimization procedure is involved.
+
+Scenario~1 therefore provides a transparent and interpretable benchmark that reflects common rule-based irrigation practices, against which the benefits of RL control (Scenario~2) and hybrid neuro-physical control (Scenario~3) can be systematically assessed.
+
+\paragraph{Scenario 2: Physics-based model with RL control (PPO)}
+
+In Scenario~2, irrigation control is achieved through a RL agent interacting directly with the physics-based soil-water model described in Section~\ref{sec:environment}. The agent is trained using PPO algorithm, as implemented in the Stable-Baselines3 library \citep{raffin2021stablebaselines3}, without any custom policy architecture or parameterisation.
+
+The control policy is represented by the standard \texttt{MlpPolicy} provided by Stable-Baselines3. At each decision step \(t\), the agent receives a continuous-valued observation vector
+\begin{equation}
+\mathbf{o}_t = [\psi_t,\ S_t,\ R_t,\ \mathrm{ET0}_t],
+\end{equation}
+where \(\psi_t\) denotes soil-water tension, \(S_t\) the soil-water storage, \(R_t\) the rainfall input, and \(\mathrm{ET0}_t\) the reference evapotranspiration. These variables together characterize the system's hydrological state and the prevailing climatic conditions.
+
+The policy network consists of two fully connected hidden layers with 64 units each and ReLU activation functions. %, corresponding to the default PPO configuration in Stable-Baselines3. 
+A shared feature extractor feeds two output heads: a policy head, which outputs the mean of a Gaussian distribution over the one-dimensional continuous action space, and a value head, which estimates the scalar state-value function \(V(\mathbf{o}_t)\). In addition, PPO maintains a learnable log-standard deviation parameter for the action distribution.
+
+The irrigation action \(I_t\) is sampled from the Gaussian policy, squashed through a hyperbolic tangent function, and rescaled to satisfy the operational constraints of the irrigation system:
+\begin{equation}
+I_t \in [0, I_{\max}],
+\end{equation}
+resulting in a continuous irrigation dose expressed in millimeters. This action is then applied to the physics-based soil-water model, which updates the system state according to the water balance equations.
+
+In this scenario, the RL agent learns irrigation strategies solely through interaction with the fixed physical model, without any corrections or augmentations to the underlying system dynamics. Scenario~2 therefore isolates the contribution of learning-based control, providing a principled comparison with the rule-based strategy of Scenario~1 and the hybrid neuro-physical formulation introduced in Scenario~3.
+
+\paragraph{Scenario~3: Hybrid environment with Neural ODE residual and PPO}
+
+Scenario~3 follows a two-stage learning protocol that explicitly separates model identification from policy optimization.
+
+\emph{Stage~1: Pretraining of the Neural ODE residual model.}
+Prior to RL, the residual dynamics model was pre-trained in a supervised manner using simulated trajectories generated from a physics-based environment. The Neural ODE learns to predict a one-day correction $\Delta \psi_t$ to the soil-water tension based on the inputs $(\psi_t, I_t, R_t, ET0_t)$. For clarity, we use the term “Neural ODE” in a conceptual sense, while the actual implementation operates in discrete time.
+
+Training uses a fixed number of trajectories (typically $32$), over $50$ epochs, with a batch size of $256$ and a learning rate of $10^{-3}$. The objective is to minimize the discrepancy between the physical prediction and the perturbed reference trajectory, yielding a stable residual model prior to control learning.
+
+Once pretrained, the Neural ODE parameters are frozen and embedded within the environmental dynamics.
+
+\emph{Stage~2: PPO training on the hybrid environment.}
+The PPO agent is then trained in the hybrid environment (physics + Neural ODE correction) using the same algorithmic structure as in Scenario~2. The training budget is again defined by a fixed number of interaction steps (e.g., $50{,}000$ timesteps), and the policy architecture remains a multilayer perceptron with continuous outputs. The PPO hyperparameters (learning rate, discount factor, clipping range, and GAE parameters) were kept consistent with Scenario~2 to isolate the effect of the hybrid dynamics.
+
+\paragraph{Evaluation protocol}
+
+For all three scenarios, an evaluation was conducted after configuration or training using identical soil parameters, weather realizations, and initial conditions. No learning, adaptation, or parameter tuning was performed during the evaluation. Performance metrics, including soil-water tension dynamics, irrigation volumes, drainage losses, and aggregated efficiency indicators, were computed over full growing seasons.
+
+This strict separation between configuration, training, and evaluation ensures that the observed performance differences arise from the controller design and system representation (rule-based, physical RL, or hybrid), rather than from stochastic variability, online adaptation, or unequal exposure to environmental conditions. This also reflects realistic deployment settings, where irrigation policies are typically calibrated or trained offline and then applied operationally without continuous retraining.
+
+Importantly, the selected soil and climatic parameterisation should be interpreted as a reference operating regime chosen to enable controlled comparisons across control strategies, rather than as a representative or exhaustive characterization of all agricultural conditions.
+
+\subsubsection{Performance indicators}
+
+The model performance was evaluated using both trajectory-level and aggregated indicators derived from the seasonal simulations. All indicators are consistently defined across scenarios and are directly linked to the notation summarized in Table~\ref{tab:notation}.
+
+At the trajectory level, the temporal evolution of soil-water tension ($\psi_t$) and soil-water storage ($S_t$) was analyzed to assess the occurrence, duration, and severity of water-stress episodes, as well as the dynamics of depletion and recovery within the root zone. These trajectories provide insights into the controllers’ ability to regulate soil-water status under stochastic climatic forcing.
+
+At the aggregated level, several seasonal performance metrics were computed as follows:
+%\begin{enumerate}[(i)]
+(i) the mean soil matric potential $\bar{\psi}$ summarizing the overall stress conditions;
+(ii) the fraction of days spent within an agronomically optimal tension range, denoted $\tau_{\mathrm{opt}}$;
+(iii) total irrigation volume $I_{\mathrm{tot}} = \sum_t I_t$;
+(iv) cumulative drainage losses $D_{\mathrm{tot}} = \sum_t D(S_t)$; 
+(v) and water-use efficiency metric $\mathrm{Eff}$ defined as the ratio between productive evapotranspiration and total water inputs.
+%\end{enumerate}
+
+Together, these indicators capture the key trade-offs between stress avoidance, water-use efficiency, and hydrological loss. They are used consistently across scenarios to ensure that observed performance differences can be attributed to the controller design rather than to confounding variations in physical parameters or climatic forcing.
+
+\subsubsection{Notation summary}
+To avoid ambiguity across the modelling, control, and learning components, Table~\ref{tab:notation} summarizes the notation used consistently throughout Section~\ref{sec:methods}.
+
+\begin{longtable}{llp{8.5cm}}
+\caption{Notation used throughout Section~\ref{sec:methods}.}
+\label{tab:notation} \\
+
+\hline
+\textbf{Symbol} & \textbf{Unit} & \textbf{Description} \\
+\hline
+\endfirsthead
+
+\multicolumn{3}{l}{\textit{Table~\ref{tab:notation} continued}} \\
+\hline
+\textbf{Symbol} & \textbf{Unit} & \textbf{Description} \\
+\hline
+\endhead
+
+\hline
+\multicolumn{3}{r}{\textit{Continued on next page}} \\
+\endfoot
+
+\hline
+\endlastfoot
+
+$t$ & day & Discrete time index ($t = 0,\dots,T-1$) \\
+$T$ & day & Length of the growing season (time horizon) \\[0.5ex]
+
+\multicolumn{3}{l}{\textit{Soil-water state variables}} \\[0.3ex]
+$S_t$ & mm & soil-water storage in the root zone (latent physical state) \\
+$S_{\max}$ & mm & Maximum soil-water storage (soil capacity) \\
+$S_{\mathrm{fc}}$ & mm & soil-water storage at field capacity \\
+$\psi_t$ & cbar & Soil matric potential (tension), observable via tensiometers \\
+$f_{\mathrm{ret}}$ & -- & soil-water retention function linking $S_t \leftrightarrow \psi_t$ \\[0.5ex]
+
+\multicolumn{3}{l}{\textit{Hydrological fluxes}} \\[0.3ex]
+$I_t$ & mm & Irrigation depth applied at day $t$ (control action) \\
+$I_{\max}$ & mm & Maximum allowable daily irrigation depth \\
+$R_t$ & mm & Rainfall at day $t$ \\
+$\widehat{R}_{t+1}$ & mm & One-day-ahead rainfall forecast used by rule-based control (Scenario~1) \\
+$ET0_t$ & mm\,day$^{-1}$ & Reference evapotranspiration at day $t$ \\
+$Kc_t$ & -- & Crop coefficient at day $t$ \\
+$ETc_t$ & mm & Crop evapotranspiration ($ETc_t = Kc_t \cdot ET0_t \cdot f_{ET}(\psi_t)$) \\
+$f_{ET}(\psi_t)$ & -- & Water-stress reduction factor for evapotranspiration \\
+$D(S_t)$ & mm & Drainage loss as a function of soil-water storage \\[0.5ex]
+
+\multicolumn{3}{l}{\textit{Mass balance and dynamics}} \\[0.3ex]
+$\eta_I$ & -- & Irrigation efficiency coefficient \\
+$f_{\mathrm{phys}}$ & -- & Physics-based soil-water balance model \\
+$f_{\mathrm{res}}$ & -- & Learned residual dynamics (Neural ODE component) \\[0.5ex]
+
+\multicolumn{3}{l}{\textit{Decision-making and learning}} \\[0.3ex]
+$\mathbf{o}_t$ & -- & Observation vector available to the controller \\
+$\mathbf{o}_t$ & -- & $(\psi_t, R_t, ET0_t)$ (default observation setting) \\
+$a_t$ & mm & Control action selected by the policy ($a_t = I_t$) \\
+
+$g(\cdot)$ & -- & Rule-based irrigation function used in Scenario~1, defined as
+$I_t = g(\psi_t, I_{\max}, \widehat{R}_{t+1}; \boldsymbol{\kappa})$ \\
+
+$\boldsymbol{\kappa}$ & -- & Parameters of the irrigation rule (e.g., tension thresholds or comfort band limits) \\
+
+$\pi(\cdot)$ & -- & Control policy (rule-based or learned) \\
+%$\pi_{\mathrm{rule}}$ & -- & Deterministic rule-based irrigation policy (Scenario~1) \\
+$\pi_\theta$ & -- & Parametric RL policy with parameters $\theta$ (Scenarios~2--3) \\[0.5ex]
+
+\multicolumn{3}{l}{\textit{RL formulation}} \\[0.3ex]
+$r_t$ & -- & Immediate reward at day $t$ \\
+$\gamma$ & -- & Discount factor for future rewards \\
+$V(\mathbf{o}_t)$ & -- & State-value function approximation \\
+$\hat{A}_t$ & -- & Advantage estimate (GAE) \\
+$J(\theta)$ & -- & Expected cumulative return optimized by PPO \\[0.5ex]
+
+\multicolumn{3}{l}{\textit{Neural ODE residual model (Scenario~3)}} \\[0.3ex]
+$f_\theta$ & -- & Neural network parameterizing residual correction \\
+$\Delta \psi_t$ & cbar & Residual correction to soil-water tension \\
+$\psi_{t+1}^{\mathrm{phys}}$ & cbar & Physical model prediction of soil tension \\
+$\psi_{t+1}$ & cbar & Hybrid prediction: $\psi_{t+1}^{\mathrm{phys}} + \Delta\psi_t$ \\[0.5ex]
+
+\multicolumn{3}{l}{\textit{Performance indicators}} \\[0.3ex]
+$\bar{\psi}$ & cbar & Mean soil matric potential over the season \\
+$\tau_{\mathrm{opt}}$ & \% & Fraction of days within optimal tension range \\
+$I_{\mathrm{tot}}$ & mm & Total irrigation volume over the season \\
+$D_{\mathrm{tot}}$ & mm & Total drainage loss over the season \\
+$\mathrm{Eff}$ & -- & Water-use efficiency metric ($ETc/(I+R)$) \\
+
+\end{longtable}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Results and discussions}
+\label{sec:results_discussion}
+
+Climate change is making farming more difficult and could cause yield losses of up to 20\% by 2050 in some regions if irrigation is not improved \citep{Stanford2025ClimateCropYields}. This study examined several irrigation control methods for semi-arid farming. Climate changes can make it challenging to use the same irrigation strategies year after year. When weather patterns shift or long-term trends appear, it is hard to keep control policies working well. By discussing these climate challenges first, we emphasize the importance of testing irrigation policies under varying and dynamic conditions. 
+
+This study set out to determine which irrigation control strategies are most effective under variable climate conditions. In particular, it investigates: \emph{What are the practical consequences of implementing rule-based, physics-based RL, and hybrid neuro-physical irrigation controllers for reducing climate-change-related impacts on crop yield? How do these approaches differ in their performance regarding water-use efficiency and mitigation of crop stress in semi-arid agricultural systems?}
+
+Effective irrigation control is essential for farmers who face water shortages and risk of losing crops. In semi-arid areas, effectively managing water is key for long-term farming. %This study supports climate-aware modelling, anticipatory control, and provide insigths that are be exploitable by public decision-makers, and deliver operational value for agro-industry. This study shares results that can help farmers, water managers, and policymakers. 
+These results are relevant for farmers, water managers, and policymakers. Three irrigation control methods were compared, as described in Section~\ref{sec:control_scenarios}: (i) rule-based control, (ii) RL in a physics-based model, and (iii) hybrid RL with Neural ODE-augmented dynamics. All tests used the same soil and climate conditions for a full growing season.
+
+The experiments were designed according to best practices in EMS to ensure clear, reproducible results: (1) set up the irrigation scenarios and their parameters, (2) ran all simulations with the same setups, and (3) checked performance with specific indicators. These indicators, such as drainage (water loss) and water-use efficiency, are recommended by EMS \citep{Bennett2013PerformanceEMS} and help assess the effectiveness of each strategy. By keeping soil and training conditions constant, we ensured that any performance differences are attributable to the control method, not the setup.
+
+\subsection{Scenario~1: Rule-based control — conservative stability}
+
+Figure~\ref{fig:scenario1} illustrates the seasonal dynamics obtained using rule-based irrigation strategies.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/results_scenario1.png}
+\caption{Seasonal dynamics of rule-based irrigation control (Scenario~1): soil-water tension, soil-water storage, irrigation and rainfall inputs, and hydrological fluxes.}
+\label{fig:scenario1}
+\end{figure}
+
+The results indicate that the rule-based control strategy maintains soil-water tension largely within the agronomically favorable interval ($20$–$60~cbar$, commonly referred to as the crop comfort zone). This behavior arises directly from the rigid threshold logic embedded in the controller, which triggers irrigation as soon as soil tension approaches predefined limits. While this conservative strategy effectively prevents short-term plant water stress, it also leads to frequent and reactive irrigation events. In the simulated configuration, irrigation occurred nearly three times per week on average, resulting in a total seasonal irrigation depth of approximately $210~mm$.
+
+The rule-based control strategy maintains soil-water tension predominantly within the predefined comfort range by triggering irrigation whenever tension approaches threshold values. This conservative behavior effectively limits short-term stress but results in frequent irrigation events and elevated cumulative water application. In soils with non-negligible drainage sensitivity, maintaining storage close to field capacity increases simulated drainage losses, indicating reduced hydrological efficiency under the assumed soil–water balance model.
+
+%Such high-frequency irrigation schedules are often inefficient in soils with appreciable drainage capacity. When irrigation exceeds immediate evapotranspiration demand, excess water is rapidly lost through deep percolation, yielding limited agronomic benefit. From a soil-process perspective, this accelerates nutrient leaching, particularly of mobile nutrients such as nitrate. Consequently, this reduces the efficiency of fertilizer-use  and increases the risk of downstream water contamination \citep{Vereecken2007SoilReview,Allen1998FAO56}.
+
+%Frequent irrigation also does not guarantee effective long-term salinity control. Although repeated watering may temporarily dilute salts in the root zone, it can promote salt redistribution and accumulation over time, especially under limited leaching fractions or saline irrigation water. During subsequent dry periods, capillary rise can transport salts back toward the root zone, ultimately degrading soil structure and productivity \citep{Fereres2007DeficitIrrigation,RodriguezIturbe2001Ecohydrology}. As a result, the apparent robustness of rule-based control in maintaining favorable soil-water tension may mask cumulative risks to soil quality and sustainability.
+
+%By contrast, Scenario~2 achieves the lowest cumulative irrigation volume by applying smaller and more uniform daily inputs ($64.4~mm$ over the season), thereby maximizing water-use efficiency. %This deficit-oriented strategy, however, increases exposure to transient soil-water stress during prolonged dry periods. Reduced percolation limits salt leaching and may exacerbate salinity buildup, particularly in semi-arid environments or when irrigation water quality is poor \citep{Allen1998FAO56,Seneviratne2010SoilClimate}. Persistently low soil moisture can also restrict nutrient mobility and uptake, contributing to nutrient depletion and reduced fertilizer efficiency \citep{Fereres2007DeficitIrrigation,Vereecken2007SoilReview}.
+
+Overall, these findings emphasize that maintaining soil-water tension within a narrow comfort range is not sufficient to ensure sustainable irrigation management. Rule-based strategies prioritize short-term stress avoidance and remain attractive for their simplicity and interpretability. Still, they tend to maintain soil-water storage close to field capacity for much of the season, leading to avoidable losses through drainage. Without anticipatory control or explicit consideration of cumulative soil-water balance effects, such approaches trade long-term water and soil efficiency for immediate robustness, an increasingly fragile compromise under conditions of climatic variability and water scarcity.
+
+
+\subsection{Scenario~2: Physics-based RL — efficiency with risk}
+
+Figure~\ref{fig:scenario2} illustrates the seasonal behavior of the PPO-based controller interacting with the physics-based soil-water model.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/results_scenario2.png}
+\caption{Seasonal dynamics of PPO-based irrigation control in the physics-based environment (Scenario~2).}
+\label{fig:scenario2}
+\end{figure}
+
+Compared with the rule-based strategy (Scenario~1), Scenario~2 applies smaller and smoother irrigation doses, resulting in the lowest cumulative irrigation volume over the season ($110~mm$) and the highest water-use efficiency (Figure~\ref{fig:compar_metrics}). This behavior reflects the RL agent’s ability to exploit soil-water storage and rainfall variability to delay irrigation and reduce total water inputs.
+
+While this method is more efficient, it also increases the risk of plants not getting enough water during long dry periods. Sometimes, the system does not fully account for how much water the plants need because it uses a simple model. 
+%Experimental and modeling studies consistently report measurable yield penalties associated with repeated water-stress events, with magnitude depending on crop type, duration, and phenological stage %Studies show that if plants face this kind of stress repeatedly, it can reduce crop yields by about 1–3\% for each day of stress, depending on the type of crop and its growth stage 
+%\citep{seneviratne2021weather,Fereres2007DeficitIrrigation}. 
+This shows there is a balance between efficiency and reliability when using a model based only on physics.
+
+%Scenario~2's irrigation method affects the soil. Using less water means salts might build up in the soil, especially in dry areas or with poor-quality water. Low soil moisture can also make it hard for plants to get nutrients, leading to faster nutrient loss and less effective fertilizer use. These issues are known risks of using less water for irrigation. 
+
+The physics-based RL controller exploits soil-water storage and rainfall variability to minimize irrigation volumes, leading to the highest simulated water-use efficiency among the tested strategies. However, this efficiency is achieved at the expense of increased temporal variability in soil-water tension, including short periods exceeding the predefined stress threshold. Within the present modelling framework, these excursions indicate reduced robustness of soil-water regulation under stochastic climatic forcing.
+
+Scenario~2 shows that using RL can save water better than traditional methods. However, this comes with a risk of more stress on crops and possible long-term soil damage. To reduce these risks while keeping the benefits of learning-based control, Scenario~3 suggests adding model-correction methods.
+
+%Extreme soil-water tension values indicate that this controller, which relies solely on a simple physical model, struggles to predict long-term water shortages. Although it reduces drainage losses compared to the rule-based approach, the extreme stress episodes are a concern for crop reliability.
+
+
+\subsection{Scenario~3: Hybrid RL with Neural ODE — moderated trade-offs}
+
+Scenario~3 extends the physics-based RL strategy by introducing a hybrid neuro-physical formulation. In this setting, the physical soil–water balance model is augmented with a learned residual correction, allowing the controller to account explicitly for systematic model mismatch while retaining the adaptive capabilities of RL. The objective is not to maximize water savings alone, but to moderate the efficiency–risk trade-off observed in Scenario~2.
+
+Figure~\ref{fig:scenario3} presents the seasonal trajectories obtained with the hybrid controller. Compared with the purely physics-based RL strategy, Scenario~3 substantially reduces both the magnitude and duration of extreme soil-water tension peaks. Soil-water storage trajectories are smoother and avoid deep depletion during prolonged dry periods. This indicates improved anticipation of cumulative water deficits. At the same time, irrigation volumes remain moderate and are better aligned with rainfall events, leading to lower drainage losses than those observed under rule-based control.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/results_scenario3.png}
+\caption{Seasonal dynamics of hybrid PPO control with Neural ODE–augmented dynamics (Scenario~3).}
+\label{fig:scenario3}
+\end{figure}
+
+Despite these improvements, Scenario~3 does not maximize the fraction of days spent within the agronomically optimal tension range (Figure~\ref{fig:compar_metrics}); in this respect, the conservative rule-based strategy remains superior. Instead, the hybrid controller achieves a balanced operating regime in which extreme stress events are mitigated without reverting to frequent or excessive irrigation. This intermediate behavior reflects the explicit correction of physical model biases rather than a simple tightening of irrigation thresholds.
+
+From a soil-process perspective, the moderated irrigation pattern of Scenario~3 has important implications. By avoiding both excessive irrigation (Scenario~1) and persistent deficit conditions (Scenario~2), the hybrid strategy reduces the risks associated with nutrient leaching and long-term salinity accumulation. Drainage events are sufficiently limited to preserve water-use efficiency, while occasional replenishment maintains leaching capacity, helping to prevent salt build-up in the root zone. Although these mechanisms are not explicitly modeled here, the resulting soil-water trajectories are consistent with irrigation practices aimed at balancing productivity, soil health, and resource sustainability.
+
+Overall, Scenario~3 demonstrates that incorporating residual dynamics into the control loop can substantially improve robustness without sacrificing the efficiency gains of learning-based control. The hybrid neuro-physical approach reshapes the trade-off between water savings and stress avoidance, positioning itself as a pragmatic compromise between the conservatism of rule-based control and the risk-prone efficiency of purely physics-based RL.
+
+
+%\subsection{Comparative analysis across scenarios}
+%\label{subsec:comparative_analysis}
+
+%Indicators were compared using seasonal simulations with soil and climate details from Section~\ref{sec:experimental_design}: a moderately deep root zone ($Z_r = 600$~mm) and a narrow range for optimal soil-water tension ($\psi_{\mathrm{fc}} \approx 33$~cbar, $\psi_{ET}^{\mathrm{crit}} = 80$~cbar); drainage is sensitive, with a coefficient $k_d = 0.30$; the climate has moderate changes in evapotranspiration and occasional rain, typical of semi-arid to sub-humid areas.
+
+\subsection{Influence of soil and climatic parameterisation on control performance}
+\label{subsec:soil_climatic_param}
+
+The comparative study was carried out using a reference soil and climate setup outlined in Section~\ref{sec:experimental_design}, chosen to allow for a controlled and repeatable assessment of various irrigation methods. This setup involves a moderately deep agricultural soil with an effective root-zone depth of $Z_r = 600~mm$, offering a significant buffer against short-term atmospheric demands. This depth is typical of many irrigated cropping systems and highlights delayed soil-water responses that are crucial for closed-loop control. 
+
+The soil's hydraulic properties are defined by a relatively narrow optimal soil-water tension range, with field capacity around $\psi_{\mathrm{fc}} \approx 33~cbar$ and the start of evapotranspiration stress at $\psi_{ET}^{\mathrm{crit}} = 80~cbar$. This narrow transition zone means that small changes in soil-water storage can quickly lead to significant shifts in plant water stress, thus increasing the sensitivity of control performance to the timing and anticipation of irrigation actions. 
+
+Drainage dynamics are influenced by a notable drainage coefficient ($k_d = 0.30$), typical of soils with moderate to high permeability, such as sandy loam textures. With this parameterization, excessive irrigation or rainfall events rapidly cause deep percolation losses once storage surpasses field capacity, penalizing conservative control strategies that keep soil-water content near saturation. Climatic conditions feature moderate seasonal variability in reference evapotranspiration combined with sporadic rainfall events, resulting in a regime marked by episodic rather than continuous water deficits. 
+
+This hydro-climatic context is common in semi-arid to sub-humid regions and supports adaptive irrigation strategies that can balance short-term stress avoidance with anticipated atmospheric demand and rainfall unpredictability. Collectively, these soil and climatic parameters define the operational regime where the relative strengths and weaknesses of the three control scenarios become apparent. 
+
+Specifically, the combination of delayed soil-water responses, sensitive drainage behavior, and stochastic climatic forcing heightens the trade-offs between conservative stress avoidance, water-use efficiency, and resilience to extreme conditions. Different parameterizations—such as shallower soils, lower drainage sensitivity, or more arid climatic conditions—would likely shift these trade-offs and could change the relative ranking of the control strategies.
+
+\subsubsection{Comparison of soil-water tension dynamics}
+
+Figure~\ref{fig:compar_stress} compares the soil-water tension trajectories obtained under the three control strategies.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/results_compar1.png}
+\caption{Comparison of soil-water tension dynamics across the three scenarios. The shaded area indicates the agronomically optimal tension range.}
+\label{fig:compar_stress}
+\end{figure}
+
+In the chosen soil setup, the rule-based controller (Scenario~1) keeps soil-water tension mostly in the best range for farming. This happens because it uses careful rules and has high irrigation efficiency ($\eta_I = 0.85$). It waters often to quickly refill the root-zone. This avoids severe stress but uses more water.
+
+In Scenario~2, the RL controller shows high peaks in soil-water tension. It often goes beyond the critical stress level. This happens because the root zone can't buffer well, soil-water responses are slow, and the controller tries to use less water when rain is uncertain. If dry periods last longer than expected, the controller acts too late, causing short but severe water stress.
+
+Scenario~3 reduces these extreme actions. It uses a learned correction to lower both the number and height of tension peaks seen in Scenario~2. This correction fixes mismatches in water loss and drainage, leading to smoother tension changes and fewer sudden stress events. However, the hybrid method does not fully match the cautious approach of the rule-based controller. Instead, it balances a slight increase in stress changes with better water use.
+
+Overall, this comparison highlights a clear progression across scenarios: from conservative stress avoidance (Scenario~1), to aggressive efficiency-driven control with risk (Scenario~2), and finally to a balanced compromise that mitigates extreme stress while preserving adaptability (Scenario~3).
+
+\subsubsection{Comparison of soil-water storage}
+
+Figure~\ref{fig:compar_soil} shows the corresponding soil-water storage trajectories.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/results_compar2.png}
+\caption{Comparison of soil-water storage trajectories across the three scenarios, relative to field capacity and wilting point.}
+\label{fig:compar_soil}
+\end{figure}
+
+The rule-based controller keeps soil-water levels near field capacity ($S_{\mathrm{fc}}$). It does this to avoid water stress on crops. However, with a drainage sensitivity of $k_d = 0.30$, it often causes water to drain away when irrigation or rain is more than the short-term water needs of the plants. This approach is safe but not efficient with water use.
+
+On the other hand, the physics-based RL (Scenario~2) lets the soil dry out more, especially during long dry spells with high $ET0_t$. The system is set up to use less water, even if it means the plants might get stressed sometimes. This method uses water more efficiently but can sometimes bring the soil close to the wilting point, which is risky for crops.
+
+The hybrid controller (Scenario~3) balances these approaches. It adjusts the system to fix errors in how the physical model predicts water use and drainage. This creates a smoother water level in the soil, avoiding both too much drying and too much watering. This balance helps manage water better without using too much.
+
+From a farming and management view, this balance helps deal with changing weather by reducing extreme stress on crops. It avoids using too much water and keeps soil-water levels stable, which can help save water in areas where it is limited.
+
+\subsubsection{Comparison of cumulative water volumes}
+
+Figure~\ref{fig:compar_water} presents a comparison of cumulative irrigation and rainfall volumes across the scenarios.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/results_compar3.png}
+\caption{Comparison of cumulative irrigation and rainfall volumes across scenarios.}
+\label{fig:compar_water}
+\end{figure}
+
+The amount of rain is the same in all scenarios. So, the differences in irrigation come from the control methods used:
+
+\begin{itemize}
+    \item Scenario~1 uses the most water. It follows a strict rule to keep soil moisture in a safe range, even if rain is uncertain. This reduces plant stress but uses more water and can lead to more drainage.
+    \item Scenario~2 uses the least water. It takes advantage of changes in rainfall and the soil's ability to hold water. This method is efficient with water but can cause more changes in soil moisture and stress during dry times.
+    \item Scenario~3 is in the middle. It uses a mix of methods to control water use without being too strict. This reduces water use compared to the rule-based method and keeps stress levels more stable than the physics-based method. This shows the hybrid method can balance efficiency and stability.
+\end{itemize}
+
+
+\subsubsection{Comparison of aggregated performance indicators}
+\label{sub:comp_agg_indicators}
+
+Figure~\ref{fig:compar_metrics} summarizes the aggregated performance indicators. Rule-based control (Scenario~1) maximizes the proportion of days within the optimal tension range; however, this approach incurs substantial drainage losses due to maintaining storage near $S_{\mathrm{fc}}$ in soils with notable percolation sensitivity.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/results_compar4.png}
+\caption{Comparison of aggregated performance indicators: total drainage, percentage of days in the optimal tension range, mean soil-water tension, and water-use efficiency.}
+\label{fig:compar_metrics}
+\end{figure}
+
+ Physics-based RL (Scenario~2) attains the highest water-use efficiency by permitting greater fluctuations in soil-water tension, but this results in the least favorable stress indicators.
+
+The hybrid neuro-physical approach (Scenario~3) reduces both drainage losses and the occurrence of extreme stress events. By addressing systematic biases in the physical model response, especially under conditions of high evaporative demand or near-capacity storage, this method achieves a more balanced compromise between efficiency and robustness.
+
+\subsubsection{Comparative synthesis}
+
+A consistent pattern was observed across all indicators, closely associated with the chosen soil and climatic parameters. Rule-based control is designed to prioritize stress avoidance, which benefits shallow or highly stress-sensitive soils, but leads to inefficient water use when drainage sensitivity is pronounced. Conversely, physics-based RL emphasizes efficiency by leveraging soil storage and rainfall variability, though this increases risk under simplified dynamics and stochastic influences.
+
+In regions with seasonal rainfall below $500~mm$, it is recommended to implement a hybrid control strategy to balance limited water resources while minimizing the risk of extreme plant stress. This specific policy guidance extends beyond academic exploration, offering practical decision-making strategies for areas experiencing stricter water constraints and greater climatic variability.
+
+Operationally, these results indicate that hybrid controllers are especially appropriate in scenarios where basic physical knowledge exists, but soil behavior and climatic forcing are uncertain. Rule-based strategies continue to be suitable for low-risk or highly regulated environments, while learning-based and hybrid methods are increasingly pertinent under stricter water constraints, greater climatic variability, and changing soil conditions. Practical limitations such as training costs and data availability highlight the need for future research on incremental learning, sensor-driven calibration, and cross-site transfer.
+
+\subsubsection{Limitations}
+\label{subsubsec:limitations}
+
+Several limitations persist and delineate clear avenues for future research. These constraints are directly related to the soil and climatic parameterization employed in this study, which was deliberately selected to facilitate controlled and reproducible comparisons among control strategies. 
+
+\paragraph{Effect of increased physical complexity}
+
+The soil-water balance model in this study was deliberately simplified to isolate the effects of control strategies under consistent soil and climatic conditions. The chosen parameterisation assumes a homogeneous root zone, a single storage variable, and aggregated representations of drainage and evapotranspiration stress. Introducing further physical complexity, such as soil heterogeneity, layered profiles, preferential flow, or dynamic crop growth influencing root water uptake and evapotranspiration, would increase state uncertainty, extend memory effects, and intensify nonlinear interactions. 
+
+To illustrate the implications of added complexity, we refer to real field data exhibiting layered soil profiles, such as those observed in the Agricultural Research Station in California \citep{Vereecken2007SoilReview}, which demonstrate how soil heterogeneity can significantly impact water movement and uptake. This data underscores the importance of progressive validation as it aligns with real-world dynamics and more accurately captures the variations in soil-water interactions.
+
+Under these conditions, rule-based strategies (Scenario 1) would likely require frequent retuning of tension thresholds and irrigation doses across different soils and seasons. This sensitivity is especially evident in soils with higher drainage coefficients or narrower optimal tension ranges, where minor parameter mismatches can cause oscillatory irrigation behavior and increased losses. 
+
+Physics-based RL (Scenario 2) may also become more susceptible to structural model mismatches when key nonlinearities are omitted, such as misrepresentation of evapotranspiration reduction or redistribution processes. In the absence of explicit mechanisms to address parameter uncertainty, such as domain randomization, this may result in increased plant stress.
+
+The hybrid approach (Scenario 3) is anticipated to remain advantageous primarily by correcting systematic residual errors resulting from the physics modelling, such as delayed stress onset or underestimated drainage. However, its benefits are expected to appear as enhanced robustness and safer behavior under model mismatches, rather than as universal superiority across all performance metrics. 
+
+These considerations support the adoption of a progressive validation protocol in future work, where physical fidelity is incrementally increased and policies are evaluated for transfer performance and robustness to physically meaningful perturbations.
+
+\paragraph{Climatic forcing and non-stationarity}
+
+The stochastic weather generator used in this study introduces variability through seasonal patterns and stochastic noise in rainfall occurrence and reference evapotranspiration. Although this configuration allows for controlled scenario comparisons, it does not explicitly capture regime shifts, interannual persistence, or long-term climatic trends. As a result, the robustness of the learned policies under non-stationary climatic conditions is only partially evaluated.
+
+A deeper evaluation would test controllers across distinct climatic regimes, such as arid, temperate, and tropical environments, using historical weather records or synthetic trajectories generated from climate model outputs. In these scenarios, fixed rule-based strategies would likely require frequent recalibration, especially when rainfall frequency or evaporative demand diverges from the assumptions underlying the rule parameters. Learning-based controllers would encounter distribution shifts relative to their training data, which could degrade performance unless adaptation mechanisms are implemented. 
+
+To address this, we propose a specific further experiment comparing the controllers' performance in arid and humid historical years. This cross-climate test would involve using long-term weather records to model irrigation control under varying raining conditions, highlighting the extent to which each strategy maintains robustness amidst non-stationary climate influences. Potential adaptations identified through this experiment could guide the enhancement of current policies, offering a clear direction for future research.
+
+The hybrid neuro-physical approach is anticipated to be especially effective in these contexts, as residual learning can address persistent biases resulting from unmodeled climate effects. However, this benefit depends on explicitly addressing nonstationarity during training or adaptation. Future research will therefore prioritize cross-climate evaluation and transfer, consistent with EMS best practices for robustness analysis under climatic uncertainty.
+
+\iffalse
+\paragraph{Residual neural correction}
+
+The residual neural component models discrepancies not captured by simplified soil-water balance equations. In the current implementation, this component is trained in a supervised manner before RL, utilizing simulated trajectories with stochastic perturbations to the physical model to emulate unmodeled effects and observation noise. The residual model remains fixed during policy training and is applied in inference mode within the environment. 
+
+However, uncertainty in the residual correction is not explicitly quantified or propagated in the current configuration. This lack of uncertainty modeling could potentially affect the robustness of the policy, as not considering uncertainties may introduce variability in decisions taken, based on the residuals. Future research intends to explore strategies for incorporating uncertainty quantification within the residual learning framework to enhance policy reliability under variable conditions. 
+
+Future work will investigate residual learning strategies that incorporate uncertainty quantification, online adaptation, and continuous-time formulations, particularly as higher-frequency sensor data become available.
+\fi
+
+\paragraph{Transferability to other environmental systems}
+
+The proposed framework demonstrates transferability through its modelling and control structure, rather than by directly reusing a trained policy. Application to other environmental systems necessitates identification of four analogous components: (i) a process-based model $f_{phys}$ that describes dominant system dynamics, such as mass balance equations for reservoir storage or atmospheric transport models for air quality; (ii) control actions that represent management decisions; (iii) stochastic drivers that capture exogenous forcing; and (iv) an objective function that encodes system-specific trade-offs. 
+
+We welcome partnerships to validate these controllers in on-farm trials, inviting agronomists and practitioners to collaborate on field data collection and application. To this end, ongoing field validation efforts are underway in collaboration with [insert partner organizations], focusing on staple crops such as wheat and maize in multiple locations, including [insert specific locations]. This collaboration aims to enhance real-world validation and uptake of our methodologies, bridging the gap between theoretical development and practical application.
+
+Further research to address this study limitations are prioritized as follows: 
+
+\begin{itemize}
+
+\item \textbf{Markovian state representations:} The reliance on fixed daily resolution may lead to missed midday stress events, especially in soils with deeper root zones or slower drainage. This limitation restricts the modeling of long-term dependencies, delayed hydrological responses, and irregular temporal sampling, which can affect irrigation decisions. Future research will investigate Neural Controlled Differential Equations to better capture continuous-time dynamics.
+
+\item \textbf{Climatic forcing model:} The stochastic weather generator does not account for multiyear persistence, regime shifts, or compound extremes. This oversight limits anticipatory behavior, particularly under high-demand or infrequent-rainfall conditions. More realistic climate-aware decision-making could be facilitated by integrating time-series foundation models like PatchTST for weather forecasting.
+
+\item \textbf{Absence of an explicit world model:} Without a long-term planning and counterfactual analysis framework, the current approach may not handle stricter water constraints or deeper soil profiles effectively. Extending latent world-model architectures that integrate system dynamics and uncertainty could enhance the robustness of stress testing.
+
+\end{itemize}
+
+Therefore, the robustness examined in this study pertains specifically to stochastic variability and model mismatch under a fixed climatic parameterization. It should not be viewed as evidence of generalization across non-stationary climate regimes or long-term distribution shifts. 
+
+To address the generalizability limits, it is essential to acknowledge that different climatic conditions, such as those in tropical, temperate, or arid zones, might significantly alter the performance of the irrigation control strategies tested here. Soil types with varying drainage capacities and root zone depths could also impact the efficacy of these methods, requiring tailored adaptations for each unique environment. 
+
+Future research should explore the effects of these diverse conditions to better understand the external validity and transferability of the proposed methods.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Conclusion and perspectives}
+\label{sec:conclusion}
+
+This study examined how physics-informed RL can support more adaptive and reliable irrigation control under climatic uncertainty. By systematically comparing rule-based control, physics-based RL, and a hybrid neuro-physical approach within a unified simulation framework, the analysis clarifies how increasing levels of learning and model integration affect water use, stress exposure, and overall control robustness.
+
+The results show that no single control strategy is universally optimal. Rule-based control remains effective at maintaining soil-water tension within a narrow agronomic comfort range and is straightforward to implement and interpret. Under the soil and climatic conditions considered here, this conservative behavior successfully limits crop water stress. However, it also leads to frequent irrigation events and higher cumulative water use, particularly in soils with non-negligible drainage capacity, where excess water is lost without proportional agronomic benefit.
+
+Physics-based RL substantially improves water-use efficiency by exploiting soil-water storage and rainfall variability. By explicitly accounting for delayed soil-water responses, the RL controller reduces irrigation volumes compared to heuristic rules. This efficiency gain, however, comes with increased exposure to transient stress during prolonged dry periods. The results highlight a clear efficiency–reliability trade-off: when driven by a simplified physical model, learning-based control can underestimate cumulative deficits under stochastic forcing, leading to episodic stress that may be unacceptable in risk-averse agricultural settings.
+
+The hybrid neuro-physical approach addresses this trade-off by augmenting the physical model with a learned residual correction. Across the tested configurations, this strategy consistently reduced extreme stress events while preserving much of the water-saving benefit of RL. Rather than enforcing conservative behavior, the hybrid controller reshapes the balance between efficiency and robustness by compensating for systematic model mismatch, such as delayed stress onset or misrepresented drainage dynamics. This makes the hybrid formulation particularly attractive for operational contexts where simplified models are necessary but must remain reliable under variable conditions.
+
+Beyond quantitative performance, the study helps clarify when learning-based control provides added value over fixed rules. Learning-based approaches are most beneficial when irrigation decisions must balance competing objectives—stress avoidance, water conservation, and loss minimization—under non-stationary soil and climatic conditions. In such settings, fixed thresholds calibrated for specific soils or historical climates may no longer be sufficient. By contrast, hybrid learning approaches retain the transparency of physical models while adapting to evolving conditions, which is critical for acceptance in environmental decision support.
+
+From a practical standpoint, the appropriate control strategy depends on context. Rule-based methods remain well suited to low-risk environments with stable soils, limited sensing, and modest water constraints. Learning-based and hybrid strategies become increasingly relevant as climatic variability intensifies, water resources tighten, and soil responses become more heterogeneous. In these cases, the ability to adapt to uncertainty may outweigh the additional data, computation, and expertise required for deployment.
+
+Several limitations of the present study suggest directions for future work. First, the daily single-layer formulation does not fully capture long-term memory effects associated with deeper soil layers or slow redistribution processes. Extending the framework toward multi-layer or continuous-time representations could improve realism while raising new control challenges. Second, the use of stochastic weather generators limits anticipatory decision-making. Incorporating forecast information or climate projections would enable a more direct assessment of robustness under future conditions. Finally, tighter integration between dynamics learning and control—such as jointly learning uncertainty-aware models and policies—remains an open avenue for improving both performance and interpretability.
+
+Overall, this work demonstrates that physics-informed and hybrid learning approaches provide a coherent and flexible foundation for intelligent irrigation control under uncertainty. Rather than replacing physical insight or expert knowledge, the proposed framework shows how learning-based components can complement simplified models to produce adaptive, stable, and interpretable control strategies suited to evolving climatic and operational constraints.
+
+\iffalse
+This section sums up the main findings and what they mean for smarter irrigation control. The results show that using physics-informed RL can make irrigation more efficient and better able to handle changing weather, giving a strong way to manage water resources well.
+
+This study looked at how physics-informed RL could help make irrigation smarter when the weather is unpredictable. Picture a vineyard in a place with sudden spring storms, where uneven rain can hurt crops or waste water. In this situation, three main control methods matter: a rule-based strategy, RL that works with a simple physical model, and a hybrid approach where the physical model is improved by a learned correction. To compare these, we set up scenarios with the same soil settings for all methods and used weather data showing the area's changing rainfall. Each method started with the same conditions and rules to make sure the comparison was fair and could be repeated. This let us clearly see how more learning affects irrigation results. The results showed clear differences in how well the three methods managed soil water, especially in tough situations like our example vineyard.
+
+The findings show that no single method was best in every way. Rule-based control helps avoid plant stress and is easy to understand in soils that can hold a moderate amount of water and have safe limits. But newer model-based control methods, like DDRMPC, have cut down on water use and improved control compared to traditional rule-based methods. Physics-based RL saves more water by taking into account delayed water movement and build-up in the soil. However, with the chosen soil and weather settings, this extra efficiency also made the system more likely to face extreme stress, showing that the model can be sensitive to changes and may not always predict weather changes well.
+
+The hybrid neuro-physical approach deals with this trade-off by lowering extreme stress and water loss while keeping most of the efficiency benefits of learning-based control. This improvement was steady across the different soil and weather conditions we tested, showing it is more reliable in these cases, though not always better in every situation. By fixing regular mistakes from simple physics, like late stress or missed water loss, the neural part improves the physical model. The hybrid approach could also work for many types of crops, like grains and fruits, especially in places with changing weather. Its ability to adjust to different soils and climates shows it could help improve water use in many farming situations.
+
+Besides the numbers, this study explains when learning-based controllers do better than simple rules. Learning-based methods are especially useful when irrigation needs to balance several goals at once, like reducing plant stress, saving water, and cutting losses when the weather changes. In these cases, fixed limits made for certain soils or weather often do not work well. Learning-based methods are made to balance stress, water use, and losses by adjusting to changes in soil and weather. The Neural ODE makes the system more reliable when the model is simplified by learning extra details on top of a clear physical model, so it stays consistent and easy to understand.
+
+From a practical point of view, the best control method depends on the soil, weather changes, and how much data is available. Rule-based methods work well in simple, low-risk places with steady soils and few sensors, so they are good for small farmers who do not have advanced technology and use steady routines. On the other hand, learning-based and hybrid methods become more useful when water demand goes up, rain becomes less predictable, and soils react in more complex ways. These methods are best for orchard managers and tech-focused farming companies that can use advanced data tools and flexible strategies. In these cases, being able to adjust to unknowns and random changes is more important than the extra computer power and data needed, especially when step-by-step training or using knowledge from other systems is possible.
+
+The limitations found in this study point to several directions for future research. First, the current daily state setup does not fully capture long-term effects from deeper soils, layers, or slow water movement. Using neural-controlled differential equations is a solid way to model changes over time from sensor data that comes in at different times. Some research questions are: \emph{How can these equations be changed to better catch long-term effects in different soil layers? What happens to irrigation efficiency when deeper soil layers are added to these models?} Second, relying on simple random weather generators limits how well the system can plan ahead. Adding weather forecasts or climate model data would help assess the system's robustness under changing conditions. Future work could ask: \emph{What water management improvements come from using better forecasting? How do these methods compare in accuracy and usefulness to simple random generators?} Third, not having a clear world model makes it hard to plan and test what-if situations, showing the need to build models that learn how the system works, its uncertainty, and how to control it all together. Research could look at experiments that use these models to predict irrigation results or find out when what-if analysis can best help with irrigation decisions.
+
+In short, this study shows that physics-informed learning gives a strong and flexible way to handle the trade-offs in smart irrigation when things are uncertain. Instead of replacing physical models or expert knowledge, hybrid neuro-physical methods offer an extra way to build adaptive, reliable, and easy-to-understand systems for water management that can handle changing climates, using clear soil and weather information.
+\fi
+
+%% The Appendices part is started with the command \appendix;
+%% appendix sections are then done as normal sections
+%\appendix
+%\section{Example Appendix Section}
+%\label{app1}
+
+%Appendix text.
+
+\appendix
+\section{Daily integration scheme for the two-layer bucket model}
+\label{app:two_layer_bucket}
+
+This appendix details the daily numerical integration of the intermediate two-layer bucket soil--water model used as an extension of the single-reservoir formulation. The model is designed to capture vertical heterogeneity, delayed redistribution, and distinct evaporation and transpiration processes while remaining compatible with daily closed-loop control and RL.
+
+\subsection*{State variables and parameters}
+
+The soil profile is discretized into two layers. At day $t$, the state is given by
+\[
+\mathbf{S}_t = \big(S_t^{(1)},\, S_t^{(2)}\big),
+\]
+where $S_t^{(1)}$ and $S_t^{(2)}$ (mm) denote the soil-water storage in the upper and lower layers, respectively. Each layer $\ell \in \{1,2\}$ is characterized by a maximum storage $S_{\max}^{(\ell)}$, field capacity $S_{\mathrm{fc}}^{(\ell)}$, and wilting point $S_{\mathrm{wp}}^{(\ell)}$.
+
+Daily forcing includes rainfall $R_t$, irrigation $I_t$, reference evapotranspiration $\mathrm{ET0}_t$, and crop coefficient $Kc_t$. The irrigation efficiency is denoted by $\eta_I$.
+
+\subsection*{Step 1: Infiltration into the upper layer}
+
+Daily water inputs are first applied to the upper soil layer:
+\begin{equation}
+U_t = \eta_I I_t + R_t.
+\end{equation}
+The intermediate storage after infiltration is
+\begin{equation}
+S_t^{(1,+)} = \min\!\left(S_t^{(1)} + U_t,\; S_{\max}^{(1)}\right),
+\end{equation}
+and surface runoff is defined as
+\begin{equation}
+\mathrm{Runoff}_t = \max\!\left(0,\; S_t^{(1)} + U_t - S_{\max}^{(1)}\right).
+\end{equation}
+
+\subsection*{Step 2: Soil evaporation from the upper layer}
+
+Potential crop evapotranspiration is computed as
+\begin{equation}
+\mathrm{ETc}_t^{\mathrm{pot}} = Kc_t \, \mathrm{ET0}_t.
+\end{equation}
+A fixed fraction $\lambda_E \in [0,1]$ is assigned to potential soil evaporation:
+\begin{equation}
+E_t^{\mathrm{pot}} = \lambda_E \, \mathrm{ETc}_t^{\mathrm{pot}}.
+\end{equation}
+
+Evaporation is limited by soil moisture availability through a stress factor
+\begin{equation}
+f_E^{(1)}(S) =
+\mathrm{clip}\!\left(
+\frac{S - S_{\mathrm{wp}}^{(1)}}{S_{\mathrm{fc}}^{(1)} - S_{\mathrm{wp}}^{(1)}},
+\,0,\,1
+\right),
+\end{equation}
+leading to actual evaporation
+\begin{equation}
+E_t = E_t^{\mathrm{pot}} \, f_E^{(1)}\!\left(S_t^{(1,+)}\right).
+\end{equation}
+The updated upper-layer storage is
+\begin{equation}
+S_t^{(1,++)} = \max\!\left(0,\; S_t^{(1,+)} - E_t\right).
+\end{equation}
+
+\subsection*{Step 3: Transpiration and root water uptake}
+
+Potential transpiration is defined as
+\begin{equation}
+T_t^{\mathrm{pot}} = (1-\lambda_E)\, \mathrm{ETc}_t^{\mathrm{pot}}.
+\end{equation}
+
+Each layer contributes to transpiration according to a root fraction $\rho^{(\ell)}$, with $\rho^{(1)} + \rho^{(2)} = 1$. A layer-specific stress factor is defined as
+\begin{equation}
+f_T^{(\ell)}(S) =
+\mathrm{clip}\!\left(
+\frac{S - S_{\mathrm{wp}}^{(\ell)}}{S_{\mathrm{fc}}^{(\ell)} - S_{\mathrm{wp}}^{(\ell)}},
+\,0,\,1
+\right).
+\end{equation}
+
+The effective transpiration stress is
+\begin{equation}
+\bar f_T =
+\rho^{(1)} f_T^{(1)}\!\left(S_t^{(1,++)}\right)
++
+\rho^{(2)} f_T^{(2)}\!\left(S_t^{(2)}\right),
+\end{equation}
+yielding actual transpiration
+\begin{equation}
+T_t = T_t^{\mathrm{pot}} \, \bar f_T.
+\end{equation}
+
+Layer-wise uptake is allocated as
+\begin{equation}
+T_t^{(\ell)} =
+T_t \,
+\frac{\rho^{(\ell)} f_T^{(\ell)}\!\left(S_t^{(\ell)}\right)}
+{\sum_{j=1}^2 \rho^{(j)} f_T^{(j)}\!\left(S_t^{(j)}\right) + \varepsilon},
+\end{equation}
+where $\varepsilon$ is a small constant to avoid division by zero.
+
+Updated storages after transpiration are
+\begin{align}
+S_t^{(1,+++)} &= \max\!\left(0,\; S_t^{(1,++)} - T_t^{(1)}\right),\\
+S_t^{(2,+)}   &= \max\!\left(0,\; S_t^{(2)} - T_t^{(2)}\right).
+\end{align}
+
+\subsection*{Step 4: Vertical redistribution between layers}
+
+Delayed percolation from the upper to the lower layer is modeled as
+\begin{equation}
+Q_{12,t} = k_{12}\, \max\!\left(0,\; S_t^{(1,+++)} - S_{\mathrm{fc}}^{(1)}\right),
+\end{equation}
+where $k_{12} \in [0,1]$ is a redistribution coefficient.
+
+Storages are updated as
+\begin{align}
+S_t^{(1,\mathrm{final})} &= S_t^{(1,+++)} - Q_{12,t},\\
+S_t^{(2,++)} &= \min\!\left(S_t^{(2,+)} + Q_{12,t},\; S_{\max}^{(2)}\right).
+\end{align}
+
+\subsection*{Step 5: Deep drainage loss}
+
+Drainage from the lower layer is computed as
+\begin{equation}
+D_t = k_d\, \max\!\left(0,\; S_t^{(2,++)} - S_{\mathrm{fc}}^{(2)}\right),
+\end{equation}
+where $k_d \in [0,1]$ is the drainage coefficient.
+
+\subsection*{Step 6: State update}
+
+The final state for the next day is given by
+\begin{align}
+S_{t+1}^{(1)} &= S_t^{(1,\mathrm{final})},\\
+S_{t+1}^{(2)} &= S_t^{(2,++)} - D_t.
+\end{align}
+
+This six-step integration preserves mass balance, enforces physical bounds, and introduces delayed responses through vertical redistribution, while remaining computationally efficient and numerically stable for daily control applications.
+
+%\appendix
+\section{Stepwise integration pathway toward ecohydrological formulations}
+\label{app:ecohydro_ladder}
+
+This appendix outlines a stepwise pathway to increase ecohydrological realism in the irrigation environment while preserving a controlled increase in model complexity. The steps are ordered from the current lumped bucket representation to a multilayer Richards-equation-based formulation. Each step specifies the governing state variables, flux parameterisations, and a practical discrete-time integration procedure compatible with daily decision cycles.
+
+\subsection{Step 0: Single-layer root-zone bucket (baseline)}
+\label{app:step0_bucket}
+
+\paragraph{State and drivers}
+Let $S_t$ (mm) denote root-zone storage. Daily climate drivers are $R_t$ (mm), $ET0_t$ (mm\,day$^{-1}$), and $Kc_t$.
+
+\paragraph{Fluxes}
+Crop evapotranspiration is computed as
+\begin{equation}
+ET_{c,t} = Kc_t\,ET0_t\, f_{\mathrm{ET}}(\psi_t),
+\end{equation}
+with $\psi_t = f_{\mathrm{ret}}(S_t)$.
+Drainage is $D_t = D(S_t)$ (e.g., activated above field capacity).
+
+\paragraph{Update}
+\begin{equation}
+S_{t+1} = \mathrm{clip}\!\left(S_t + \eta_I I_t + R_t - ET_{c,t} - D_t,\; 0,\; S_{\max}\right).
+\end{equation}
+
+\subsection{Step 1: Explicit partition of evapotranspiration (E--T separation)}
+\label{app:step1_ETpartition}
+
+To align with ecohydrological conventions, evapotranspiration is decomposed into soil evaporation $E_t$ and plant transpiration $T_t$.
+
+\paragraph{Partition}
+\begin{equation}
+ET_{c,t} = E_t + T_t,
+\qquad
+E_t = (1-f_c)\,K_{e,t}\,ET0_t,
+\qquad
+T_t = f_c\,K_{cb,t}\,ET0_t\,f_T(\psi_t),
+\end{equation}
+where $f_c$ is fractional cover, $K_{e,t}$ is an evaporation coefficient, and $K_{cb,t}$ is a basal crop coefficient. The stress response $f_T(\psi_t)\in[0,1]$ acts primarily on transpiration.
+
+\paragraph{Update}
+Replace $ET_{c,t}$ in the Step~0 balance by $E_t+T_t$.
+
+\subsection{Step 2: Multi-layer bucket (intermediate ecohydrological structure)}
+\label{app:step2_multilayer_bucket}
+
+We discretize the soil profile into $L$ layers with storages $S_t^{(\ell)}$ (mm), $\ell=1,\dots,L$. Layer 1 is near-surface; deeper layers represent the root zone and sub-root zone.
+
+\paragraph{State}
+\begin{equation}
+\mathbf{S}_t = \left(S_t^{(1)},\dots,S_t^{(L)}\right),
+\qquad
+\psi_t^{(\ell)} = f_{\mathrm{ret}}^{(\ell)}\!\left(S_t^{(\ell)}\right).
+\end{equation}
+
+\paragraph{Infiltration and runoff}
+Let $P_t = R_t + \eta_I I_t$ be total input. Optionally include runoff $Q_t$:
+\begin{equation}
+I^{(1)}_{\mathrm{in},t} = \max(P_t - Q_t,\,0).
+\end{equation}
+
+\paragraph{Vertical redistribution (parameterised percolation)}
+Define inter-layer drainage fluxes $Q_{t}^{(\ell\to\ell+1)}$ such as
+\begin{equation}
+Q_{t}^{(\ell\to\ell+1)} = k_{\ell}\,\max\!\left(S_t^{(\ell)}-S_{\mathrm{fc}}^{(\ell)},\,0\right),
+\end{equation}
+where $k_{\ell}$ controls delayed redistribution. Bottom drainage is
+\begin{equation}
+D_t = Q_{t}^{(L\to L+1)}.
+\end{equation}
+
+\paragraph{Evaporation and transpiration allocation across layers}
+Evaporation extracts from the top layer only:
+\begin{equation}
+E_t \leftarrow \text{removes water from } S_t^{(1)}.
+\end{equation}
+Transpiration is distributed by root fractions $\rho^{(\ell)}$ (with $\sum_{\ell}\rho^{(\ell)}=1$) and layer stress:
+\begin{equation}
+T_t^{(\ell)} = T_t \,\frac{\rho^{(\ell)}\,f_T(\psi_t^{(\ell)})}{\sum_{j=1}^L \rho^{(j)}\,f_T(\psi_t^{(j)})+\varepsilon}.
+\end{equation}
+
+\paragraph{Discrete update (explicit daily)}
+For $\ell=1,\dots,L$:
+\begin{align}
+S_{t+1}^{(1)} &= \mathrm{clip}\!\Big(S_t^{(1)} + I^{(1)}_{\mathrm{in},t} - Q_{t}^{(1\to2)} - E_t - T_t^{(1)},\;0,\;S_{\max}^{(1)}\Big),\\
+S_{t+1}^{(\ell)} &= \mathrm{clip}\!\Big(S_t^{(\ell)} + Q_{t}^{(\ell-1\to\ell)} - Q_{t}^{(\ell\to\ell+1)} - T_t^{(\ell)},\;0,\;S_{\max}^{(\ell)}\Big),\quad \ell=2,\dots,L.
+\end{align}
+
+\paragraph{Notes}
+This step introduces ecohydrological complexity (vertical heterogeneity, delayed response, root uptake depth profiles) while preserving numerical stability and computational efficiency suitable for RL.
+
+\subsection{Step 3: Root-zone growth and time-varying rooting depth}
+\label{app:step3_root_growth}
+
+Let the effective rooting depth $Z_{r}(t)$ vary in time (e.g., logistic growth), inducing time-varying root fractions $\rho^{(\ell)}(t)$:
+\begin{equation}
+Z_r(t) = Z_{r,\min} + (Z_{r,\max}-Z_{r,\min})\left(1-\exp(-\kappa t)\right),
+\end{equation}
+and define $\rho^{(\ell)}(t)$ by allocating root density over layers whose depth intervals fall within $[0,Z_r(t)]$.
+This increases memory effects and shifts transpiration extraction deeper as the season progresses.
+
+\subsection{Step 4: Richards-equation-inspired fluxes (semi-physical closure)}
+\label{app:step4_richards_inspired}
+
+To move closer to Richards dynamics without solving a PDE, define inter-layer fluxes using unsaturated conductivity $K(\theta)$ and matric head gradients:
+\begin{equation}
+Q_{t}^{(\ell\to\ell+1)} \approx K(\theta^{(\ell)})\left(\frac{h^{(\ell)}-h^{(\ell+1)}}{\Delta z} + 1\right)\Delta t,
+\end{equation}
+where $\theta^{(\ell)}$ is volumetric water content derived from storage, and $h^{(\ell)}$ is pressure head. This introduces physically interpretable gradients while retaining a layered ODE-like update.
+
+\subsection{Step 5: Full multilayer Richards equation (reference ecohydrological model)}
+\label{app:step5_richards_full}
+
+A full ecohydrological reference can be defined by the 1D Richards equation with a root-uptake sink:
+\begin{equation}
+\frac{\partial \theta(z,t)}{\partial t}
+=
+\frac{\partial}{\partial z}
+\left[
+K(\theta)
+\left(
+\frac{\partial h}{\partial z}+1
+\right)
+\right]
+-
+S_{\mathrm{root}}(h,z,t).
+\end{equation}
+
+\paragraph{Discretisation (outline)}
+Using $L$ layers, define $\theta^{(\ell)}_t$ and $h^{(\ell)}_t$ per layer. Compute conductivities $K^{(\ell)}$ and interface fluxes $q^{(\ell+1/2)}$ using hydraulic functions (e.g., van Genuchten--Mualem). Update via an implicit scheme for stability:
+\begin{equation}
+\boldsymbol{\theta}_{t+1} \text{ solves } 
+\boldsymbol{\theta}_{t+1} - \boldsymbol{\theta}_t
+=
+\Delta t\,\mathbf{F}(\boldsymbol{\theta}_{t+1}) - \Delta t\,\mathbf{S}_{\mathrm{root}}(\boldsymbol{\theta}_{t+1}),
+\end{equation}
+typically requiring Newton iterations. Boundary conditions represent infiltration at the surface and free drainage or fixed head at the bottom.
+
+\paragraph{Use in the present framework}
+This step is most suitable as a high-fidelity ``reference simulator'' for offline benchmarking, stress testing, and residual-learning targets, rather than for large-scale RL training loops.
+
+\subsection{Summary}
+\label{app:ecohydro_summary}
+
+The described pathway enables a systematic transition from a single-bucket representation (Step~0) to an ecohydrologically grounded, layered model that incorporates delayed responses and heterogeneity (Steps~2 to 4), culminating in a Richards-equation-based reference (Step~5). This approach facilitates transparent model development, controlled increases in complexity, and reproducible assessment of controller robustness as physical realism increases.
+
+%\appendix
+\section{Purpose and control coupling of alternative soil--water modelling formulations}
+\label{app:model_positioning}
+
+This appendix clarifies the conceptual purpose, physical realism, and degree of control coupling for the various soil–water modelling formulations examined in this study. The aim is to position the proposed model in relation to classical Richards-equation-based and ecohydrological formulations, and to highlight the respective advantages and limitations of each approach within closed-loop irrigation control frameworks.
+
+\subsection{Proposed physics-based and hybrid control-aware formulation}
+
+The soil–water model used in this study is a reduced, discrete-time representation of root-zone water balance, specifically designed for closed-loop irrigation control. It integrates mass conservation, physically interpretable fluxes such as evapotranspiration, drainage, and storage, and incorporates stress-modulated plant response within a daily decision-making framework consistent with operational irrigation practices.
+
+A key characteristic of this formulation is its control awareness. Rather than providing a high-fidelity description of soil hydrodynamics at fine spatial or temporal scales, the model is designed to:
+(i) remain numerically stable under repeated policy exploration,
+(ii) support large numbers of simulation episodes required by RL,
+(iii) expose meaningful and actionable state variables to the controller, and
+(iv) allow systematic isolation of control effects from physical modelling assumptions.
+
+The hybrid extension augments this structure with a learned residual correction that compensates for systematic modelling errors while maintaining the underlying physical structure. This design allows learning-based controllers to explicitly address model discrepancies, thereby enhancing robustness under stochastic climatic conditions without compromising interpretability or computational efficiency.
+
+\paragraph{Advantages}
+\begin{itemize}
+\item The model aligns closely with daily irrigation decision cycles and the availability of sensor data.
+\item It demonstrates computational efficiency that is suitable for RL applications and sensitivity analyses.
+\item There is an explicit separation among physical dynamics, control logic, and learned correction components.
+The approach maintains stable behavior under stochastic forcing and during exploratory control actions.
+\end{itemize}
+
+\paragraph{Limitations}
+\begin{itemize}
+\item Vertical soil heterogeneity and fine-scale redistribution processes are represented through parameterization rather than explicit resolution.
+\item Memory effects extending beyond the daily time step are approximated using storage dynamics instead of continuous-time processes.
+\item Predictive fidelity is reduced under conditions dominated by strong vertical gradients or preferential flow.
+\end{itemize}
+
+\subsection{Richards-equation-based soil--water models}
+
+Richards-equation-based models offer a physically rigorous framework for describing unsaturated flow in soils by resolving pressure head gradients, hydraulic conductivity, and moisture redistribution in continuous space and time. These models are extensively used in hydrology and soil physics to investigate infiltration, redistribution, and drainage under well-defined boundary and initial conditions.
+
+However, Richards-based formulations are primarily descriptive rather than control-oriented. Their numerical complexity, stiffness, and sensitivity to parameter uncertainty present significant challenges for direct integration into closed-loop control or RL frameworks.
+
+\paragraph{Advantages}
+\begin{itemize}
+\item These models exhibit high physical fidelity and provide explicit representation of vertical soil processes.
+\item They are capable of capturing delayed responses, sharp wetting fronts, and nonlinear hydraulic behavior.
+These models are suitable for use as reference models in benchmarking or offline validation studies.
+\end{itemize}
+
+\paragraph{Limitations for control}
+\begin{itemize}
+\item They incur high computational costs and impose restrictive time-step requirements.
+\item Numerical instability may occur under exploratory or extreme control actions.
+\item There is limited compatibility with large-scale policy learning or online decision-making processes.
+\item It is challenging to provide interpretable, low-dimensional state representations for use by controllers.
+\end{itemize}
+
+Consequently, within the present framework, Richards-equation-based models are most appropriately regarded as high-fidelity reference simulators or as sources of training data for residual learning, rather than as operational control environments.
+
+\subsection{Classical Ecohydrological Models}
+
+Ecohydrological models serve as an intermediate approach between fully physical Richards-equation-based formulations and simplified bucket-type models. These models typically represent the soil–plant–atmosphere continuum using multiple soil layers, explicit root water uptake profiles, evapotranspiration partitioning, and simplified vertical redistribution processes. They are often formulated as systems of coupled ordinary differential equations.
+
+These models are well suited for long-term ecosystem analysis, water balance studies, and investigations of climate–vegetation interactions, where the primary objective is to understand system behavior rather than to optimize control actions. Consequently, they have traditionally been developed as descriptive or predictive tools, not as components of closed-loop decision-making systems.
+
+\paragraph{Advantages}
+\begin{itemize}
+\item Explicit and physically meaningful representation of soil--plant--atmosphere interactions.
+\item Improved handling of vertical heterogeneity, delayed redistribution, and depth-dependent root water uptake compared to single-layer bucket models.
+\item Enhanced interpretability through process-level decomposition, enabling diagnostic insight into the relative contributions of evaporation, transpiration, and layer-wise water uptake.
+\item Strong grounding in ecohydrological theory and empirical observations, facilitating scientific analysis and model validation.
+\end{itemize}
+
+\paragraph{Limitations for control integration}
+\begin{itemize}
+\item Increased state dimensionality raises the complexity of policy learning and state-space exploration for RL, even when individual state variables remain physically interpretable.
+\item Longer memory effects and internal redistribution dynamics reduce controller responsiveness at daily decision scales and complicate credit assignment.
+\item Computational cost grows rapidly with the number of layers and nonlinear process parameterizations, limiting suitability for large-scale policy training and repeated stochastic evaluation.
+\item Limited native support for tight coupling with control objectives, uncertainty-aware exploration, and reproducible benchmarking under exploratory control actions.
+\end{itemize}
+
+\subsection{Comparative perspective and rationale for model choice}
+
+The modelling approach adopted in this study represents a deliberate balance between physical realism and compatibility with control frameworks. Although Richards-equation-based and ecohydrological models provide enhanced descriptive capabilities, their direct integration with RL frameworks is frequently impractical.
+
+In contrast, the proposed formulation preserves key ecohydrological mechanisms while maintaining explicit compatibility with closed-loop control and learning. Embedding physical constraints within a control-oriented structure and incorporating learned residual dynamics enables systematic exploration of irrigation strategies under uncertainty, while retaining numerical stability and interpretability.
+
+Therefore, the proposed model serves as a complementary decision-support abstraction, specifically designed for adaptive irrigation control, benchmarking, and policy evaluation under stochastic climatic conditions, rather than as a substitute for detailed ecohydrological simulation.
+
+\section{Stability and well-posedness of the control-aware soil--water model}
+\label{app:stability}
+
+%This appendix provides a mathematical sanity proof that the proposed daily soil--water dynamics are (i) \emph{well-posed} (the update is defined for all admissible inputs), (ii) \emph{positively invariant} in a physically meaningful domain (bounded storage), and (iii) \emph{stable in the sense of bounded-input bounded-state} (BIBS) / input-to-state-like stability under bounded climatic forcing.
+This appendix presents a mathematical analysis of the proposed daily soil--water dynamics, establishing the following properties:
+
+\begin{enumerate}[(i)]
+\item \emph{Well-posedness (existence and uniqueness)}: for any admissible initial condition and any bounded climatic forcing and irrigation input, the state update equations admit a \emph{unique} solution at each daily time step, yielding a well-defined state trajectory over the entire simulation horizon.
+
+\item \emph{Positive invariance of the physical domain}: the soil--water storage remains within a physically meaningful bounded set for all time, i.e., if the initial storage lies within the admissible domain $[0, S_{\max}]$, then all subsequent states generated by the update equations remain in this domain, ensuring mass conservation and physical consistency.
+
+\item \emph{Bounded-input bounded-state stability (BIBS)}: under bounded climatic forcing and bounded irrigation actions, the resulting soil-water state remains bounded for all time. Specifically, the system dynamics exhibit an input-to-state-like stability property, such that variations in external forcing result in proportionate and bounded variations in soil-water storage, thereby preventing unphysical divergence or numerical instability.
+\end{enumerate}
+
+These properties justify the model's use as a numerically stable closed-loop environment for control and RL.
+
+\subsection{Model definition}
+
+We consider the daily storage update (Eq.~\eqref{eq:bucket_balance}):
+\begin{equation}
+S_{t+1}
+=
+\mathrm{clip}\!\left(
+S_t + U_t - L_t(S_t),\; 0,\; S_{\max}
+\right),
+\label{eq:app_bucket}
+\end{equation}
+where
+\[
+U_t := \eta_I I_t + R_t \ge 0
+\]
+is the total daily input (irrigation + rainfall), and
+\[
+L_t(S_t) := ET_{c,t}(S_t) + D(S_t) \ge 0
+\]
+is the total loss, combining evapotranspiration and drainage. Evapotranspiration is defined as
+\begin{equation}
+ET_{c,t}(S_t) = Kc_t\,ET0_t\, f_{\mathrm{ET}}\!\big(\psi_t\big),
+\qquad
+\psi_t = f_{\mathrm{ret}}(S_t).
+\label{eq:app_ET}
+\end{equation}
+
+In the hybrid setting (Scenario~3), the simulator maintains $S_t$ and $\psi_t=f_{\mathrm{ret}}(S_t)$, and applies a residual correction in tension space:
+\begin{equation}
+\psi_{t+1} = \psi_{t+1}^{\mathrm{phys}} + \Delta\psi_t,
+\qquad
+S_{t+1}= f_{\mathrm{ret}}^{-1}(\psi_{t+1}),
+\label{eq:app_hybrid}
+\end{equation}
+with $\Delta\psi_t=f_\theta(\psi_t,I_t,R_t,ET0_t)$.
+
+\subsection{Assumptions}
+
+We state standard boundedness and regularity assumptions consistent with operational agro-hydrological practice.
+
+\begin{enumerate}
+\item \textbf{Bounded inputs.} There exist finite constants $I_{\max}$, $R_{\max}$, $ET0_{\max}$ and $Kc_{\max}$ such that
+\[
+0\le I_t\le I_{\max},\quad 0\le R_t\le R_{\max},\quad 0\le ET0_t\le ET0_{\max},\quad 0\le Kc_t\le Kc_{\max}.
+\]
+
+\item \textbf{Stress factor boundedness.} The evapotranspiration stress reduction satisfies
+\[
+0\le f_{\mathrm{ET}}(\psi)\le 1
+\quad\text{for all admissible }\psi.
+\]
+
+\item \textbf{Drainage nonnegativity.} The drainage function satisfies $D(S)\ge 0$ for all $S\in[0,S_{\max}]$.
+
+\item \textbf{Retention curve properties.} The mapping $f_{\mathrm{ret}}:[0,S_{\max}]\to[\psi_{\min},\psi_{\max}]$ is continuous, strictly monotone, and invertible on its image. Moreover, both $f_{\mathrm{ret}}$ and $f_{\mathrm{ret}}^{-1}$ are Lipschitz on their respective domains with constants $L_{\mathrm{ret}}$ and $L_{\mathrm{ret}}^{-1}$.
+
+\item \textbf{Residual boundedness (hybrid only).} The learned residual is bounded:
+\[
+|\Delta\psi_t|\le \Delta\psi_{\max}\quad \text{for all admissible inputs.}
+\]
+In practice this is enforced by architecture choice (e.g., $\tanh$ output) and/or explicit clipping.
+\end{enumerate}
+
+Existence and uniqueness follow directly from the explicit nature of the update equations. The state transition is defined as a deterministic, single-valued mapping $S_{t+1} = F(S_t, I_t, d_t)$ composed of continuous elementary functions (addition, multiplication, thresholding, and clipping). As no implicit equation or fixed-point problem is involved, a unique next-state value exists for every admissible input and initial condition.
+
+\subsection{Positive invariance and boundedness}
+
+\begin{theorem}[Positive invariance of the storage domain]
+\label{thm:invariance}
+For any initial condition $S_0\in[0,S_{\max}]$ and any admissible input sequence, the trajectory generated by \eqref{eq:app_bucket} satisfies
+\[
+S_t\in[0,S_{\max}] \quad \text{for all } t\ge 0.
+\]
+\end{theorem}
+
+\begin{proof}
+By definition, $\mathrm{clip}(x,0,S_{\max})\in[0,S_{\max}]$ for any real $x$. Therefore, if $S_t\in[0,S_{\max}]$, then $S_{t+1}$ defined by \eqref{eq:app_bucket} belongs to $[0,S_{\max}]$. Since $S_0\in[0,S_{\max}]$, the result follows by induction.
+\end{proof}
+
+\paragraph{Interpretation}
+Theorem~\ref{thm:invariance} formalizes that the simulator is \emph{physically admissible by construction}: storage cannot become negative and cannot exceed the prescribed capacity even under exploratory actions, which is essential for stable RL training.
+
+\subsection{Bounded-input bounded-state stability (BIBS)}
+
+\begin{theorem}[BIBS stability of the physical update]
+\label{thm:bibs_phys}
+Under Assumptions 1--3, the storage trajectory of \eqref{eq:app_bucket} is bounded for any bounded input sequence. In particular,
+\[
+0\le S_t \le S_{\max}\quad\forall t,
+\]
+and the losses satisfy the uniform bound
+\[
+0 \le ET_{c,t}(S_t)\le Kc_{\max} ET0_{\max},\qquad
+0 \le D(S_t)\le \sup_{S\in[0,S_{\max}]} D(S).
+\]
+\end{theorem}
+
+\begin{proof}
+The state bound is Theorem~\ref{thm:invariance}. For evapotranspiration, by \eqref{eq:app_ET} and Assumption 2,
+\[
+ET_{c,t}(S_t)=Kc_t ET0_t f_{\mathrm{ET}}(\psi_t)\le Kc_{\max}ET0_{\max}.
+\]
+Drainage is nonnegative by Assumption 3, and bounded on the compact interval $[0,S_{\max}]$ if $D$ is continuous (standard for threshold/linear forms used here). \end{proof}
+
+\subsection{Stability of the hybrid residual coupling}
+
+We now show that the hybrid correction in tension space preserves boundedness and well-posedness, provided the residual is bounded and the retention mapping is invertible on a bounded interval.
+
+\begin{theorem}[Well-posedness and boundedness of the hybrid update]
+\label{thm:hybrid_bounded}
+Assume Theorem~\ref{thm:invariance} holds for the physical predictor and Assumptions 4--5 hold.
+If $\psi_{t+1}$ in \eqref{eq:app_hybrid} is projected onto $[\psi_{\min},\psi_{\max}]$ (equivalently, if $\Delta\psi_t$ is bounded tightly enough such that $\psi_{t+1}\in[\psi_{\min},\psi_{\max}]$), then the hybrid update is well-defined and yields
+\[
+S_{t+1}\in[0,S_{\max}]\quad\forall t.
+\]
+\end{theorem}
+
+\begin{proof}
+By Theorem~\ref{thm:invariance}, the physical predictor yields $S_{t+1}^{\mathrm{phys}}\in[0,S_{\max}]$, hence $\psi_{t+1}^{\mathrm{phys}}=f_{\mathrm{ret}}(S_{t+1}^{\mathrm{phys}})\in[\psi_{\min},\psi_{\max}]$ by Assumption 4.
+If $\psi_{t+1}$ is ensured to remain in $[\psi_{\min},\psi_{\max}]$, then $S_{t+1}=f_{\mathrm{ret}}^{-1}(\psi_{t+1})$ is well-defined and belongs to $[0,S_{\max}]$ by invertibility of $f_{\mathrm{ret}}$ on this interval.
+\end{proof}
+
+\paragraph{Practical remark (implementation detail).}
+In a control-aware simulator, it is appropriate to enforce the projection
+\[
+\psi_{t+1}\leftarrow \mathrm{clip}(\psi_{t+1}^{\mathrm{phys}}+\Delta\psi_t,\; \psi_{\min},\psi_{\max})
+\]
+before applying $f_{\mathrm{ret}}^{-1}$. This preserves physical admissibility without altering the conceptual role of the residual.
+
+\subsection{Incremental stability (optional Lipschitz bound)}
+
+To quantify sensitivity, we provide a simple incremental bound. Let $S_t$ and $\tilde S_t$ be two trajectories driven by the same exogenous forcing but possibly different actions, and define $\delta_t:=|S_t-\tilde S_t|$.
+
+\begin{proposition}[One-step incremental bound (physical update)]
+\label{prop:incremental}
+Assume $D(\cdot)$ and $f_{\mathrm{ET}}(f_{\mathrm{ret}}(\cdot))$ are Lipschitz on $[0,S_{\max}]$ with constants $L_D$ and $L_{ET}$ (uniformly in $t$ through bounded $Kc_t ET0_t$). Then the pre-clipped map satisfies
+\[
+|S_{t+1}^{\mathrm{raw}}-\tilde S_{t+1}^{\mathrm{raw}}|
+\le (1+L_D+L_{ET})\,|S_t-\tilde S_t| + \eta_I |I_t-\tilde I_t|,
+\]
+and after clipping,
+\[
+|S_{t+1}-\tilde S_{t+1}|
+\le |S_{t+1}^{\mathrm{raw}}-\tilde S_{t+1}^{\mathrm{raw}}|,
+\]
+since $\mathrm{clip}(\cdot,0,S_{\max})$ is non-expansive.
+\end{proposition}
+
+\begin{proof}
+Triangle inequality gives the bound for the raw update. Non-expansiveness of clipping follows from the fact that projection onto a convex interval is 1-Lipschitz. \end{proof}
+
+\paragraph{Interpretation}
+Proposition~\ref{prop:incremental} formalizes the numerical stability of the environment under exploratory control. The one-step map is Lipschitz, and the clipping operation is non-expansive, which together prevent uncontrolled amplification of small perturbations.
+
+\subsection{Summary}
+
+The proposed environment demonstrates the stability necessary for closed-loop benchmarking. The soil--water state remains physically bounded for all admissible actions and climatic forcing, ensuring positive invariance. Hydrological fluxes remain bounded under bounded drivers, reflecting bounded-input bounded-state (BIBS) stability. Additionally, the hybrid residual coupling preserves well-posedness under mild boundedness and invertibility assumptions.
+
+Furthermore, the stability and well-posedness analysis establishes continuous dependence of the soil--water state on initial conditions, control inputs, and climatic forcing. This property is a necessary prerequisite for sensitivity analysis. Explicit analytical parametric sensitivity metrics are not derived in this appendix. Instead, sensitivity is investigated empirically through controlled scenario analyses, consistent with the control-oriented and benchmarking-focused scope of the model.
+
+Collectively, these properties support the control-aware purpose of the formulation. The focus is on ensuring stable, interpretable, and reproducible closed-loop simulations under uncertainty, rather than replicating all fine-scale soil hydrodynamics.
+
+\iffalse
+\section{Stability and well-posedness of the ecohydrological soil--water model}
+\label{app:stability_ecohydro}
+
+This appendix presents a mathematical analysis of a class of eco-hydrological soil--water models that extend the single-reservoir
+formulation by incorporating vertical layering, root water uptake distribution, and delayed redistribution processes.
+The purpose is to establish that, under standard regularity assumptions, such models remain suitable for closed-loop simulation and control-oriented experimentation.
+
+Specifically, we establish the following properties:
+\begin{enumerate}[(i)]
+\item \emph{Well-posedness (existence and uniqueness)}: for any admissible initial condition and bounded climatic forcing and irrigation inputs, the ecohydrological update equations admit a unique solution at each daily time step.
+
+\item \emph{Positive invariance of the physical domain}: soil--water storage in each layer remains within a physically meaningful bounded domain for all time.
+
+\item \emph{Bounded-input bounded-state (BIBS) stability}: under bounded forcing and bounded control actions, all state variables and hydrological fluxes remain bounded, preventing numerical blow-up or unphysical behavior.
+\end{enumerate}
+
+These properties justify the use of ecohydrological formulations as numerically stable reference environments or intermediate models for control-oriented studies, while highlighting the increased complexity relative to the control-aware formulation adopted in the main text.
+
+
+\subsection{Model definition}
+
+We consider an $L$-layer ecohydrological soil profile with daily time
+discretization. Let
+\[
+\mathbf{S}_t = \big(S_t^{(1)}, \dots, S_t^{(L)}\big)
+\]
+denote the vector of soil--water storages (mm) in each layer.
+The daily update is written component-wise as
+\begin{equation}
+S_{t+1}^{(\ell)}
+=
+\mathrm{clip}\!\left(
+S_t^{(\ell)} + U_t^{(\ell)} - E_t^{(\ell)} - T_t^{(\ell)}
++ Q_t^{(\ell-1\to\ell)} - Q_t^{(\ell\to\ell+1)},\;
+0,\; S_{\max}^{(\ell)}
+\right),
+\label{eq:eco_update}
+\end{equation}
+for $\ell=1,\dots,L$, with the conventions $Q_t^{(0\to1)}=0$ and
+$Q_t^{(L\to L+1)}=D_t$ (deep drainage).
+
+Here:
+\begin{itemize}
+\item $U_t^{(1)}=\eta_I I_t + R_t$ and $U_t^{(\ell)}=0$ for $\ell>1$;
+\item $E_t^{(1)}$ denotes soil evaporation from the top layer;
+\item $T_t^{(\ell)}$ denotes root water uptake (transpiration) from layer $\ell$;
+\item $Q_t^{(\ell\to\ell+1)}$ denotes delayed vertical redistribution.
+\end{itemize}
+
+\subsection{Assumptions}
+
+We impose standard boundedness and regularity assumptions commonly adopted in ecohydrological modelling.
+
+\begin{enumerate}
+\item \textbf{Bounded inputs.} Irrigation, rainfall, and climatic drivers are uniformly bounded:
+\[
+0\le I_t\le I_{\max},\quad
+0\le R_t\le R_{\max},\quad
+0\le ET0_t\le ET0_{\max}.
+\]
+
+\item \textbf{Storage bounds.} Each layer has a finite capacity
+$S_{\max}^{(\ell)}$.
+
+\item \textbf{Stress functions.} Evaporation and transpiration stress factors
+$f_E^{(\ell)}(\cdot)$ and $f_T^{(\ell)}(\cdot)$ satisfy
+\[
+0 \le f_E^{(\ell)}(\cdot), f_T^{(\ell)}(\cdot) \le 1,
+\]
+and are continuous and Lipschitz on $[0,S_{\max}^{(\ell)}]$.
+
+\item \textbf{Redistribution fluxes.} Vertical fluxes $Q_t^{(\ell\to\ell+1)}$ are continuous, nonnegative, and bounded on compact
+domains (e.g., linear or threshold-based percolation).
+
+\item \textbf{Root distribution.} Root fractions $\rho^{(\ell)}$ satisfy $\rho^{(\ell)}\ge 0$ and $\sum_{\ell=1}^L \rho^{(\ell)}=1$.
+\end{enumerate}
+
+\subsection{Well-posedness}
+
+\begin{theorem}[Existence and uniqueness]
+For any admissible initial state $\mathbf{S}_0$ and any bounded input sequence, the ecohydrological update \eqref{eq:eco_update} admits a unique solution at each time step.
+\end{theorem}
+
+\begin{proof}
+Each update equation is explicit and single-valued, composed of continuous functions (addition, multiplication, stress functions, redistribution fluxes) followed by clipping onto a closed interval. No implicit equations or fixed-point problems arise. Therefore, a unique next-state value exists for each layer and each time step.
+\end{proof}
+
+\subsection{Positive invariance}
+
+\begin{theorem}[Positive invariance of layered storage]
+If $S_0^{(\ell)}\in[0,S_{\max}^{(\ell)}]$ for all $\ell$, then
+\[
+S_t^{(\ell)}\in[0,S_{\max}^{(\ell)}]
+\quad\forall t\ge 0,\;\forall \ell.
+\]
+\end{theorem}
+
+\begin{proof}
+The clipping operator in \eqref{eq:eco_update} projects each component onto its admissible interval. The result follows by induction on $t$.
+\end{proof}
+
+\subsection{Bounded-input bounded-state stability}
+
+\begin{theorem}[BIBS stability]
+Under the stated assumptions, the ecohydrological model is bounded-input bounded-state stable: bounded climatic forcing and bounded irrigation actions imply bounded storages and bounded fluxes.
+\end{theorem}
+
+\begin{proof}
+By positive invariance, all $S_t^{(\ell)}$ remain bounded. Stress factors are bounded by construction, implying bounded evaporation and transpiration. Redistribution and drainage fluxes are bounded on compact domains. Therefore, all state variables and fluxes remain bounded for all time.
+\end{proof}
+
+\subsection{Incremental stability (optional)}
+
+Under additional Lipschitz assumptions on stress and redistribution functions, the ecohydrological update is locally Lipschitz in the state vector, yielding continuous dependence on initial conditions and inputs. This property ensures numerical robustness but does not imply global contraction due to nonlinear stress and redistribution mechanisms.
+
+\subsection{Summary}
+
+Ecohydrological soil--water models admit well-defined, physically admissible, and bounded solutions under standard assumptions. The state remains positively invariant, fluxes remain bounded under bounded forcing, and the dynamics depend continuously on initial conditions and inputs.
+
+However, compared to the control-aware single-reservoir formulation, ecohydrological models introduce increased state dimensionality, stronger nonlinearities (via stress functions and redistribution), and longer memory effects. These features enhance physical interpretability but complicate policy learning and closed-loop control.
+
+Accordingly, ecohydrological formulations are best suited as high-fidelity reference models or intermediate validation layers in progressive control frameworks, rather than as primary environments for large-scale RL.
+\fi 
+
+%% For citations use: 
+%%       \citet{<label>} ==> Lamport (1994)
+%%       \citep{<label>} ==> (Lamport, 1994)
+%%
+%Example citation, See \citet{lamport94}.
+
+%% If you have bib database file and want bibtex to generate the
+%% bibitems, please use
+%%
+%%  \bibliographystyle{elsarticle-harv} 
+%%  \bibliography{<your bibdatabase>}
+
+%% else use the following coding to input the bibitems directly in the
+%% TeX file.
+
+%% Refer following link for more details about bibliography and citations.
+%% https://en.wikibooks.org/wiki/LaTeX/Bibliography_Management
+
+%\begin{thebibliography}{99}
+
+%% For authoryear reference style
+%% \bibitem[Author(year)]{label}
+%% Text of bibliographic item
+%\end{thebibliography}
+
+
+\bibliography{rl-irrig}
+\end{document}
+
+\endinput
+%%
+%% End of file `elsarticle-template-harv.tex'.
