@@ -138,7 +138,6 @@ from src.utils_neuro_ode_cont import (
     ContinuousResidualODE, ContinuousResidualODEDataset,
     pretrain_continuous_residual_ode, train_ppo_hybrid_ode_cont
 )
-from src.utils_ui_ai import render_ai_assistant_sidebar
 
 # ----------------------------------------------------------------------------
 # UTILITAIRES SCÉNARIO 4 : NEURAL CDE (utils_neuro_cde.py)
@@ -356,7 +355,6 @@ def main():
         # Résumé Goal Programming (toujours visible)
         current_lang = st.session_state.get("ui_language", "fr")
 
-        render_ai_assistant_sidebar(current_lang)
 
         goal_spec = st.session_state.get("goal_spec")
         if goal_spec:
