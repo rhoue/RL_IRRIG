@@ -263,6 +263,12 @@ apply_custom_css()
 # ============================================================================
 # INTERFACE STREAMLIT
 # ============================================================================
+def _get_metric(metrics, keys):
+    for key in keys:
+        if key in metrics:
+            return metrics[key]
+    return None
+
 def main():
     """
     Point d'entrée de l'application Streamlit pour configurer, entraîner et évaluer
@@ -839,6 +845,8 @@ que celui où les bibliothèques sont installées.
                                 def __init__(self):
                                     super().__init__()
                                     self.metrics_history = []
+                                    self.ep_rewards = []
+                                    self.ep_lengths = []
                                 
                                 def _on_step(self) -> bool:
                                     # Collecter les métriques à chaque log
@@ -850,16 +858,35 @@ que celui où les bibliothèques sont installées.
                                                     metrics[key] = value
                                         if metrics:
                                             self.metrics_history.append(metrics)
+                                    # Capturer les épisodes terminés via Monitor
+                                    infos = self.locals.get("infos") if hasattr(self, "locals") else None
+                                    dones = self.locals.get("dones") if hasattr(self, "locals") else None
+                                    if infos is not None and dones is not None:
+                                        for info, done in zip(infos, dones):
+                                            if not done or not isinstance(info, dict):
+                                                continue
+                                            episode = info.get("episode")
+                                            if isinstance(episode, dict):
+                                                r = episode.get("r")
+                                                l = episode.get("l")
+                                                if isinstance(r, (int, float)) and isinstance(l, (int, float)):
+                                                    self.ep_rewards.append(float(r))
+                                                    self.ep_lengths.append(float(l))
                                     return True
                                 
                                 def get_final_metrics(self):
-                                    """Retourne les métriques finales (dernières valeurs enregistrées)"""
+                                    """Retourne les dernières valeurs disponibles pour chaque métrique."""
                                     if not self.metrics_history:
                                         return {}
-                                    for metrics in reversed(self.metrics_history):
+                                    merged = {}
+                                    for metrics in self.metrics_history:
                                         if metrics:
-                                            return metrics
-                                    return {}
+                                            merged.update(metrics)
+                                    if self.ep_rewards:
+                                        merged.setdefault("rollout/ep_rew_mean", sum(self.ep_rewards) / len(self.ep_rewards))
+                                    if self.ep_lengths:
+                                        merged.setdefault("rollout/ep_len_mean", sum(self.ep_lengths) / len(self.ep_lengths))
+                                    return merged
                             
                             metrics_callback = MetricsCallback()
                             callbacks_list.append(metrics_callback)
@@ -1017,23 +1044,23 @@ que celui où les bibliothèques sont installées.
                         if training_metrics:
                             col1, col2, col3 = st.columns(3)
                             with col1:
-                                ep_rew = training_metrics.get("rollout/ep_rew_mean", "N/A")
+                                ep_rew = _get_metric(training_metrics, ["rollout/ep_rew_mean", "train/ep_rew_mean", "ep_rew_mean"])
                                 if isinstance(ep_rew, (int, float)):
                                     st.metric(metric_labels["reward"], f"{ep_rew:.2f}")
                                 else:
-                                    st.metric(metric_labels["reward"], ep_rew)
+                                    st.metric(metric_labels["reward"], ep_rew or "N/A")
                             with col2:
-                                ep_len = training_metrics.get("rollout/ep_len_mean", "N/A")
+                                ep_len = _get_metric(training_metrics, ["rollout/ep_len_mean", "train/ep_len_mean", "ep_len_mean"])
                                 if isinstance(ep_len, (int, float)):
                                     st.metric(metric_labels["ep_len"], f"{ep_len:.1f}")
                                 else:
-                                    st.metric(metric_labels["ep_len"], ep_len)
+                                    st.metric(metric_labels["ep_len"], ep_len or "N/A")
                             with col3:
-                                policy_loss = training_metrics.get("train/policy_loss", "N/A")
+                                policy_loss = _get_metric(training_metrics, ["train/policy_loss", "train/policy_gradient_loss"])
                                 if isinstance(policy_loss, (int, float)):
                                     st.metric(metric_labels["policy_loss"], f"{policy_loss:.4f}")
                                 else:
-                                    st.metric(metric_labels["policy_loss"], policy_loss)
+                                    st.metric(metric_labels["policy_loss"], policy_loss or "N/A")
                             
                             # Métriques supplémentaires dans un expander
                             with st.expander(metric_labels["detailed"]):
@@ -1458,23 +1485,23 @@ Note: Assurez-vous d'utiliser le même environnement Python que Streamlit.
                             if training_metrics:
                                 col1, col2, col3 = st.columns(3)
                                 with col1:
-                                    ep_rew = training_metrics.get("rollout/ep_rew_mean", "N/A")
+                                    ep_rew = _get_metric(training_metrics, ["rollout/ep_rew_mean", "train/ep_rew_mean", "ep_rew_mean"])
                                     if isinstance(ep_rew, (int, float)):
                                         st.metric(metric_labels["reward"], f"{ep_rew:.2f}")
                                     else:
-                                        st.metric(metric_labels["reward"], ep_rew)
+                                        st.metric(metric_labels["reward"], ep_rew or "N/A")
                                 with col2:
-                                    ep_len = training_metrics.get("rollout/ep_len_mean", "N/A")
+                                    ep_len = _get_metric(training_metrics, ["rollout/ep_len_mean", "train/ep_len_mean", "ep_len_mean"])
                                     if isinstance(ep_len, (int, float)):
                                         st.metric(metric_labels["ep_len"], f"{ep_len:.1f}")
                                     else:
-                                        st.metric(metric_labels["ep_len"], ep_len)
+                                        st.metric(metric_labels["ep_len"], ep_len or "N/A")
                                 with col3:
-                                    policy_loss = training_metrics.get("train/policy_loss", "N/A")
+                                    policy_loss = _get_metric(training_metrics, ["train/policy_loss", "train/policy_gradient_loss"])
                                     if isinstance(policy_loss, (int, float)):
                                         st.metric(metric_labels["policy_loss"], f"{policy_loss:.4f}")
                                     else:
-                                        st.metric(metric_labels["policy_loss"], policy_loss)
+                                        st.metric(metric_labels["policy_loss"], policy_loss or "N/A")
                                 
                                 # Métriques supplémentaires dans un expander
                                 with st.expander(metric_labels["detailed"]):
@@ -2305,14 +2332,14 @@ Note: Assurez-vous d'utiliser le même environnement Python que Streamlit.
                             if training_metrics:
                                 col1, col2, col3 = st.columns(3)
                                 with col1:
-                                    ep_rew = training_metrics.get("rollout/ep_rew_mean", "N/A")
-                                    st.metric(metric_labels["reward"], f"{ep_rew:.2f}" if isinstance(ep_rew, (int, float)) else ep_rew)
+                                    ep_rew = _get_metric(training_metrics, ["rollout/ep_rew_mean", "train/ep_rew_mean", "ep_rew_mean"])
+                                    st.metric(metric_labels["reward"], f"{ep_rew:.2f}" if isinstance(ep_rew, (int, float)) else (ep_rew or "N/A"))
                                 with col2:
-                                    ep_len = training_metrics.get("rollout/ep_len_mean", "N/A")
-                                    st.metric(metric_labels["ep_len"], f"{ep_len:.1f}" if isinstance(ep_len, (int, float)) else ep_len)
+                                    ep_len = _get_metric(training_metrics, ["rollout/ep_len_mean", "train/ep_len_mean", "ep_len_mean"])
+                                    st.metric(metric_labels["ep_len"], f"{ep_len:.1f}" if isinstance(ep_len, (int, float)) else (ep_len or "N/A"))
                                 with col3:
-                                    policy_loss = training_metrics.get("train/policy_loss", "N/A")
-                                    st.metric(metric_labels["policy_loss"], f"{policy_loss:.4f}" if isinstance(policy_loss, (int, float)) else policy_loss)
+                                    policy_loss = _get_metric(training_metrics, ["train/policy_loss", "train/policy_gradient_loss"])
+                                    st.metric(metric_labels["policy_loss"], f"{policy_loss:.4f}" if isinstance(policy_loss, (int, float)) else (policy_loss or "N/A"))
                                 
                                 # Métriques supplémentaires dans un expander
                                 with st.expander(metric_labels["detailed"]):
