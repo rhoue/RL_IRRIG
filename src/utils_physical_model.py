@@ -507,7 +507,7 @@ def simulate_scenario1(
 # FONCTIONS UTILITAIRES
 # ============================================================================
 
-def make_env(seed=None, season_length=None, max_irrigation=None, soil_params=None, weather_params=None, goal_spec=None, weather_shift_cfg=None):
+def make_env(seed=None, season_length=None, max_irrigation=None, soil_params=None, weather_params=None, weather_shift_cfg=None):
     """
     Fabrique une fonction d'initialisation d'environnement avec Monitor.
     
@@ -523,7 +523,6 @@ def make_env(seed=None, season_length=None, max_irrigation=None, soil_params=Non
         max_irrigation (float, optional): Dose maximale d'irrigation (défaut depuis utils_physics_config)
         soil_params (dict, optional): Paramètres du sol
         weather_params (dict, optional): Paramètres météorologiques
-        goal_spec (dict, optional): Priorités/objets lexicographiques (Option A)
         weather_shift_cfg (dict, optional): Décalage météo (robustesse)
         
     Returns:
@@ -565,7 +564,6 @@ def make_env(seed=None, season_length=None, max_irrigation=None, soil_params=Non
             seed=seed,
             soil_params=soil_params,  # utils_env_gymnasium utilise 'soil_params'
             weather_params=weather_params,  # Supporté par utils_env_gymnasium
-            goal_spec=goal_spec,
             weather_shift_cfg=weather_shift_cfg,
         )
         return Monitor(env)

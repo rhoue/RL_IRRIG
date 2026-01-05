@@ -50,7 +50,6 @@ class IrrigationEnvPhysical(gym.Env):
         reward_cfg: Optional[Dict[str, float]] = None,
         soil: Optional[Dict[str, float]] = None,
         hazard_cfg: Optional[Dict[str, Any]] = None,
-        goal_spec: Optional[Dict[str, Any]] = None,
         weather_shift_cfg: Optional[Dict[str, Any]] = None,
     ):
         super().__init__()
@@ -132,7 +131,6 @@ class IrrigationEnvPhysical(gym.Env):
         self.cum_irrig = 0.0  # Cumulative irrigation applied over the season
         self.cum_drain = 0.0  # Cumulative drainage (mm)
         self.events_count = 0  # Number of irrigation events
-        self.goal_spec = goal_spec or {}
         self.weather_shift_cfg = weather_shift_cfg or {}
 
         # Hazard events configuration (MUST BE BEFORE weather generation)
@@ -752,34 +750,6 @@ class IrrigationEnvPhysical(gym.Env):
         obs = np.array([self.psi, self.S, R_t, ET0_t], dtype=np.float32)
         return obs
 
-    def _lexico_deviations(self, psi_value: float):
-        """
-        Calcule les déviations lexicographiques à partir de goal_spec (si fourni).
-        Renvoie [d_P1, d_P2, d_P3] ou None si non configuré.
-        """
-        if not self.goal_spec:
-            return None
-        targets = self.goal_spec.get(
-            "targets",
-            {"stress_max": 55.0, "irrig_max": 250.0, "drain_max": 60.0, "events_max": 20},
-        )
-        priorities = self.goal_spec.get(
-            "priorities",
-            {"P1": ["stress"], "P2": ["drainage"], "P3": ["irrigation"]},
-        )
-        deviations_map = {
-            "stress": max(0.0, psi_value - targets.get("stress_max", 55.0)),
-            "irrigation": max(0.0, self.cum_irrig - targets.get("irrig_max", 250.0)),
-            "drainage": max(0.0, self.cum_drain - targets.get("drain_max", 60.0)),
-            "events": max(0.0, self.events_count - targets.get("events_max", 20)),
-        }
-        result = []
-        for tier in ("P1", "P2", "P3"):
-            objs = priorities.get(tier, [])
-            tier_dev = sum(deviations_map.get(obj, 0.0) for obj in objs)
-            result.append(tier_dev)
-        return result
-
     def _build_features_cde(self, psi: float, I: float, R: float, ET0: float) -> np.ndarray:
         """
         Build feature vector for Neural CDE (Controlled Differential Equation) model.
@@ -1108,9 +1078,6 @@ class IrrigationEnvPhysical(gym.Env):
             "active_hazards": active_hazards,  # List of hazards active this day
             "hazard_count": len(active_hazards),  # Number of active hazards
         }
-        deviations = self._lexico_deviations(psi_next)
-        if deviations is not None:
-            info["lexico_deviations"] = deviations
         
         # Add terminal information if episode is complete
         if done:

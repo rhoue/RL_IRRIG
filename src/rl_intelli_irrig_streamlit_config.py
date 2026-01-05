@@ -240,17 +240,12 @@ from src.utils_env_gymnasium import IrrigationEnvPhysical
 
 #   * Entraîne PPO avec callbacks pour suivi de progression
 #   * Retourne le modèle PPO entraîné et les métriques d'entraînement
-from src.utils_lexico_goal import (
-    build_lexico_config_from_session,
-    wrap_with_lexico,
-)
 
 # ----------------------------------------------------------------------------
 # UI CONFIGURATION SECTIONS (modularized)
 # ----------------------------------------------------------------------------
 from src.ui_config_sections import (
     render_environment_config,
-    render_goal_programming_config,
     render_mlp_policy_config,
     render_ppo_training_section,
     render_soil_and_tension_config,
@@ -340,81 +335,10 @@ def main():
     # ========================================================================
     
     with st.sidebar:
-        # Display logo in sidebar header
-        logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "images", "logo.jpg")
-        if os.path.exists(logo_path):
-            st.sidebar.image(logo_path, width='stretch')
-        else:
-            # Fallback: try relative path from src directory
-            logo_path = os.path.join("images", "logo_rv.svg")
-            if os.path.exists(logo_path):
-                st.sidebar.image(logo_path, width='stretch')
-
-        st.markdown("&nbsp;")  # petit espace entre le logo et le contenu
-
-        # Résumé Goal Programming (toujours visible)
-        current_lang = st.session_state.get("ui_language", "fr")
-
-
-        goal_spec = st.session_state.get("goal_spec")
-        if goal_spec:
-            heading = "🎯 Synthèse objectifs" if current_lang == "fr" else "🎯 Goals summary"
-            with st.expander(heading, expanded=True):
-                lbl_targets = "Cibles actuelles" if current_lang == "fr" else "Current targets"
-                lbl_priorities = "Priorités" if current_lang == "fr" else "Priority tiers"
-                lbl_lambdas = "Échelles (λ)" if current_lang == "fr" else "Penalty scales (λ)"
-                lbl_stress = "Stress max (kPa)" if current_lang == "fr" else "Max stress (kPa)"
-                lbl_irrig = "Irrigation max (mm/saison)" if current_lang == "fr" else "Max irrigation (mm/season)"
-                lbl_drain = "Drainage max (mm/saison)" if current_lang == "fr" else "Max drainage (mm/season)"
-                lbl_events = "Événements max" if current_lang == "fr" else "Max irrigation events"
-                st.markdown(f"**{lbl_targets}**")
-                st.markdown(
-                    "\n".join(
-                        [
-                            f"- **{lbl_stress}** : {goal_spec['targets'].get('stress_max')}",
-                            f"- **{lbl_irrig}** : {goal_spec['targets'].get('irrig_max')}",
-                            f"- **{lbl_drain}** : {goal_spec['targets'].get('drain_max')}",
-                            f"- **{lbl_events}** : {goal_spec['targets'].get('events_max')}",
-                        ]
-                    )
-                )
-                st.markdown(f"**{lbl_priorities}**")
-                priorities = goal_spec.get("priorities", {})
-                id_to_label = {
-                    "stress": "Stress végétal (ne pas dépasser)" if current_lang == "fr" else "Plant stress (do not exceed)",
-                    "drainage": "Drainage (ne pas dépasser)" if current_lang == "fr" else "Drainage (do not exceed)",
-                    "irrigation": "Irrigation saisonnière (ne pas dépasser)" if current_lang == "fr" else "Seasonal irrigation (do not exceed)",
-                    "events": "Nombre d'événements d'irrigation (ne pas dépasser)" if current_lang == "fr" else "Number of irrigation events (do not exceed)",
-                }
-                def _fmt_prio(values):
-                    return ", ".join(id_to_label.get(v, str(v)) for v in values)
-                st.markdown(
-                    "\n".join(
-                        [
-                            f"- **P1** : {_fmt_prio(priorities.get('P1', []))}",
-                            f"- **P2** : {_fmt_prio(priorities.get('P2', []))}",
-                            f"- **P3** : {_fmt_prio(priorities.get('P3', []))}",
-                        ]
-                    )
-                )
-                st.markdown(f"**{lbl_lambdas}**")
-                lambdas = goal_spec.get("lambdas", {})
-                st.markdown(
-                    "\n".join(
-                        [
-                            f"- **P1** : {lambdas.get('P1', '')}",
-                            f"- **P2** : {lambdas.get('P2', '')}",
-                            f"- **P3** : {lambdas.get('P3', '')}",
-                        ]
-                    )
-                )
-
         st.markdown('<h2 class="section-header">⚙️ Configuration</h2>', unsafe_allow_html=True)
         render_soil_and_tension_config(language=current_lang)
         render_weather_config(language=current_lang)
         render_environment_config(language=current_lang)
-        # Bloc Goal Programming (Proposal A)
-        render_goal_programming_config(language=current_lang)
 
     # Valeurs d'environnement disponibles pour le reste de l'application
     season_length = st.session_state.get("season_length", DEFAULT_SEASON_LENGTH)
@@ -856,8 +780,6 @@ que celui où les bibliothèques sont installées.
                         season_length = st.session_state.get("season_length", 120)
                         max_irrigation = st.session_state.get("max_irrigation", 20.0)
                         seed = st.session_state.get("seed", 123)
-                        lexico_cfg = build_lexico_config_from_session(st.session_state)
-                        
                         # Création de l'environnement vectorisé
                         base_env_factory = make_env(
                             seed=seed,
@@ -865,14 +787,11 @@ que celui où les bibliothèques sont installées.
                             max_irrigation=max_irrigation,
                             soil_params=soil_params,
                             weather_params=weather_params,
-                            goal_spec=st.session_state.get("goal_spec"),
                             weather_shift_cfg=st.session_state.get("proposal_a_config"),
                         )
 
                         def _init_env():
-                            env = base_env_factory()
-                            env = wrap_with_lexico(env, lexico_cfg)
-                            return env
+                            return base_env_factory()
 
                         vec_env = DummyVecEnv([_init_env])
                         
@@ -1496,8 +1415,6 @@ Note: Assurez-vous d'utiliser le même environnement Python que Streamlit.
                                     "gamma": ppo_gamma,
                                     **({"policy_kwargs": policy_kwargs} if policy_kwargs else {}),
                                 },
-                                goal_spec=st.session_state.get("goal_spec"),
-                                lexico_config=build_lexico_config_from_session(st.session_state),
                                 progress_callback=ppo_progress_callback
                             )
                             
@@ -1917,8 +1834,6 @@ Note: Assurez-vous d'utiliser le même environnement Python que Streamlit.
                                 soil_params=st.session_state.get("soil_params"),
                                 weather_params=st.session_state.get("weather_params"),
                                 ppo_kwargs=ppo_config,
-                                lexico_config=build_lexico_config_from_session(st.session_state),
-                                goal_spec=st.session_state.get("goal_spec"),
                                 weather_shift_cfg=st.session_state.get("proposal_a_config"),
                                 progress_callback=progress_callback
                             )
@@ -2349,8 +2264,6 @@ Note: Assurez-vous d'utiliser le même environnement Python que Streamlit.
                                     "gamma": ppo_gamma_cde,
                                     **({"policy_kwargs": policy_kwargs_cde} if policy_kwargs_cde else {}),
                                 },
-                                goal_spec=st.session_state.get("goal_spec"),
-                                lexico_config=build_lexico_config_from_session(st.session_state),
                                 weather_shift_cfg=st.session_state.get("proposal_a_config"),
                                 progress_callback=progress_callback
                             )

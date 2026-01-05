@@ -280,8 +280,6 @@ def train_ppo_hybrid_cde(
     weather_params: Optional[Dict] = None,
     ppo_kwargs: Optional[Dict] = None,
     progress_callback=None,
-    lexico_config=None,
-    goal_spec: Optional[Dict[str, Any]] = None,
     teacher_model=None,
     distill_coef: float = 0.0,
     weather_shift_cfg: Optional[Dict[str, Any]] = None,
@@ -342,14 +340,8 @@ def train_ppo_hybrid_cde(
             residual_cde=residual_cde_model,
             seq_len_cde=seq_len_cde,
             device="cpu",
-            goal_spec=goal_spec,
             weather_shift_cfg=weather_shift_cfg,
         )
-        try:
-            from src.utils_lexico_goal import wrap_with_lexico
-            env = wrap_with_lexico(env, lexico_config)
-        except Exception:
-            pass
         return Monitor(env)
     
     env = DummyVecEnv([make_env])

@@ -83,7 +83,6 @@ class IrrigationEnvPhysical(gym.Env if GYM_AVAILABLE else object):
         seed=123,                  # Graine aléatoire pour reproductibilité
         soil_params: Optional[Dict[str, float]] = None,    # Paramètres du sol (optionnel)
         weather_params: Optional[Dict[str, Any]] = None,   # Paramètres météo (optionnel)
-        goal_spec: Optional[Dict[str, Any]] = None,        # Spécification lexicographique (optionnel)
         weather_shift_cfg: Optional[Dict[str, Any]] = None,  # Décalage météo (robustesse)
     ):
         if not GYM_AVAILABLE:
@@ -92,7 +91,6 @@ class IrrigationEnvPhysical(gym.Env if GYM_AVAILABLE else object):
         super().__init__()
         self.season_length = season_length
         self.max_irrigation = max_irrigation
-        self.goal_spec = goal_spec or {}
         self.weather_shift_cfg = weather_shift_cfg or {}
         
         # Initialisation du modèle physique du sol avec paramètres personnalisés
@@ -137,9 +135,6 @@ class IrrigationEnvPhysical(gym.Env if GYM_AVAILABLE else object):
         self.day = 0
         self.S = float(self.soil.S_fc)  # Réserve à capacité au champ
         self.psi = float(self.soil.S_to_psi(self.S))  # Tension correspondante
-        self.cum_irrig = 0.0
-        self.cum_drain = 0.0
-        self.events_count = 0
 
     def seed(self, seed: int | None = None):
         self.rng = np.random.default_rng(seed)
@@ -162,9 +157,6 @@ class IrrigationEnvPhysical(gym.Env if GYM_AVAILABLE else object):
         self.day = 0
         self.S = float(self.soil.S_fc)
         self.psi = float(self.soil.S_to_psi(self.S))
-        self.cum_irrig = 0.0
-        self.cum_drain = 0.0
-        self.events_count = 0
         return self._obs(), {}
 
     def step(self, action):
@@ -232,12 +224,6 @@ class IrrigationEnvPhysical(gym.Env if GYM_AVAILABLE else object):
         # Pénalité 2 : quantité d'eau utilisée (coût économique/environnemental)
         #   Encourage l'économie d'eau
         reward = -abs(psi_next - np.clip(psi_next, 20.0, 60.0)) / 10.0 - 0.05 * action
-        # Compteurs cumulatifs pour les déviations lexicographiques
-        self.cum_irrig += action
-        self.cum_drain += D
-        if action > 0.0:
-            self.events_count += 1
-
         # Mise à jour de l'état pour le prochain pas de temps
         self.S, self.psi = S_next, psi_next
         self.day += 1
@@ -247,41 +233,10 @@ class IrrigationEnvPhysical(gym.Env if GYM_AVAILABLE else object):
         truncated = False
         
         # Informations supplémentaires pour le débogage et l'analyse
-        deviations = self._lexico_deviations(psi_next)
         info = {"I": action, "rain": rain_t, "ETc": ETc, "D": D}
-        if deviations is not None:
-            info["lexico_deviations"] = deviations
 
         return self._obs(), float(reward), terminated, truncated, info
 
     def _obs(self):
         t = min(self.day, self.season_length - 1)
         return np.array([self.psi, self.rain[t], self.et0[t], self.Kc[t]], dtype=np.float32)
-
-    def _lexico_deviations(self, psi_value: float):
-        """
-        Calcule les déviations lexicographiques à partir de goal_spec (si fourni).
-        Renvoie une liste [d_P1, d_P2, d_P3] ou None si non configuré.
-        """
-        if not self.goal_spec:
-            return None
-        targets = self.goal_spec.get(
-            "targets",
-            {"stress_max": 55.0, "irrig_max": 250.0, "drain_max": 60.0, "events_max": 20},
-        )
-        priorities = self.goal_spec.get(
-            "priorities",
-            {"P1": ["stress"], "P2": ["drainage"], "P3": ["irrigation"]},
-        )
-        deviations_map = {
-            "stress": max(0.0, psi_value - targets.get("stress_max", 55.0)),
-            "irrigation": max(0.0, self.cum_irrig - targets.get("irrig_max", 250.0)),
-            "drainage": max(0.0, self.cum_drain - targets.get("drain_max", 60.0)),
-            "events": max(0.0, self.events_count - targets.get("events_max", 20)),
-        }
-        result = []
-        for tier in ("P1", "P2", "P3"):
-            objs = priorities.get(tier, [])
-            tier_dev = sum(deviations_map.get(obj, 0.0) for obj in objs)
-            result.append(tier_dev)
-        return result
