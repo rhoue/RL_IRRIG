@@ -120,6 +120,19 @@ src/
 pytest tests/
 ```
 
+## Citation
+
+If you use this project in academic work, please cite:
+
+```bibtex
+@software{rhoue_rl_intelligent_irrigation,
+  author = {Raymond Houe},
+  title = {RL Intelligent Irrigation},
+  year = {2026},
+  url = {https://github.com/rhoue/RL_IRRIG}
+}
+```
+
 ## License
 
-TBD.
+Creative Commons Attribution 4.0 International (CC BY 4.0).
