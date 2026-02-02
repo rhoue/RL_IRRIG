@@ -31,8 +31,6 @@ class MetricsCallback(BaseCallback):
             raise ImportError("stable-baselines3 n'est pas disponible")
         super().__init__()
         self.metrics_history = []
-        self.ep_rewards = []
-        self.ep_lengths = []
     
     def _on_step(self) -> bool:
         """
@@ -50,20 +48,6 @@ class MetricsCallback(BaseCallback):
                         metrics[key] = value
             if metrics:
                 self.metrics_history.append(metrics)
-        # Capturer les épisodes terminés via Monitor
-        infos = self.locals.get("infos") if hasattr(self, "locals") else None
-        dones = self.locals.get("dones") if hasattr(self, "locals") else None
-        if infos is not None and dones is not None:
-            for info, done in zip(infos, dones):
-                if not done or not isinstance(info, dict):
-                    continue
-                episode = info.get("episode")
-                if isinstance(episode, dict):
-                    r = episode.get("r")
-                    l = episode.get("l")
-                    if isinstance(r, (int, float)) and isinstance(l, (int, float)):
-                        self.ep_rewards.append(float(r))
-                        self.ep_lengths.append(float(l))
         return True
     
     def get_final_metrics(self) -> Dict:
@@ -75,18 +59,11 @@ class MetricsCallback(BaseCallback):
         """
         if not self.metrics_history:
             return {}
-        # Agréger les dernières valeurs disponibles pour chaque métrique.
-        merged: Dict[str, float] = {}
-        for metrics in self.metrics_history:
-            if not metrics:
-                continue
-            for key, value in metrics.items():
-                merged[key] = value
-        if self.ep_rewards:
-            merged.setdefault("rollout/ep_rew_mean", sum(self.ep_rewards) / len(self.ep_rewards))
-        if self.ep_lengths:
-            merged.setdefault("rollout/ep_len_mean", sum(self.ep_lengths) / len(self.ep_lengths))
-        return merged
+        # Prendre les dernières métriques non vides
+        for metrics in reversed(self.metrics_history):
+            if metrics:
+                return metrics
+        return {}
 
 
 class ProgressCallback(BaseCallback):
@@ -230,3 +207,4 @@ def create_ppo_callbacks(
         callbacks.append(progress_cb)
     
     return callbacks, metrics_callback
+

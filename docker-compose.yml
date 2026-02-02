@@ -1,0 +1,114 @@
+version: '3.8'
+
+services:
+  # =============================================================================
+  # STREAMLIT APPLICATION - CONFIGURATION & TRAINING
+  # =============================================================================
+  # Main Streamlit application for RL irrigation configuration and training
+  streamlit-config:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rl-irrig-streamlit-config
+    command: ["streamlit", "run", "src/rl_intelli_irrig_streamlit_config.py", "--server.port=8501", "--server.address=0.0.0.0"]
+    ports:
+      - "8501:8501"                # Streamlit default port
+    volumes:
+      # Mount project directories for data persistence
+      - ./data:/app/data           # Data files (CSV, etc.)
+      - ./models:/app/models        # Trained RL models
+      - ./logs:/app/logs            # Training logs
+      - ./config:/app/config        # Configuration files
+      - ./src:/app/src              # Source code (for development)
+      - ./notebooks:/app/notebooks  # Jupyter notebooks
+    environment:
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # =============================================================================
+  # STREAMLIT APPLICATION - DEMO
+  # =============================================================================
+  # Alternative Streamlit interface for demonstrations
+  streamlit-demo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rl-irrig-streamlit-demo
+    command: ["streamlit", "run", "src/rl_intelli_irrig_streamlit.py", "--server.port=8502", "--server.address=0.0.0.0"]
+    ports:
+      - "8502:8502"                # Different port for demo
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - ./config:/app/config
+      - ./src:/app/src
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    profiles:
+      - demo                      # Only start with: docker-compose --profile demo up
+
+  # =============================================================================
+  # JUPYTER NOTEBOOK SERVER (OPTIONAL)
+  # =============================================================================
+  # Jupyter server for running notebooks interactively
+  jupyter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rl-irrig-jupyter
+    command: ["jupyter", "notebook", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root", "--NotebookApp.token=''", "--NotebookApp.password=''"]
+    ports:
+      - "8888:8888"                # Jupyter default port
+    volumes:
+      - ./notebooks:/app/notebooks
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./src:/app/src
+    environment:
+      - PYTHONUNBUFFERED=1
+      - JUPYTER_ENABLE_LAB=yes
+    restart: unless-stopped
+    profiles:
+      - jupyter                    # Only start with: docker-compose --profile jupyter up
+
+# =============================================================================
+# DOCKER COMPOSE USAGE
+# =============================================================================
+# 
+# Basic usage:
+#   docker-compose up                    # Start main Streamlit app (port 8501)
+#   docker-compose up -d                # Start in detached mode
+#   docker-compose down                 # Stop all services
+#   docker-compose up --build           # Rebuild images before starting
+#
+# With profiles:
+#   docker-compose --profile demo up    # Start main app + demo app
+#   docker-compose --profile jupyter up  # Start main app + Jupyter
+#   docker-compose --profile demo --profile jupyter up  # Start all services
+#
+# Access:
+#   - Main Streamlit: http://localhost:8501
+#   - Demo Streamlit: http://localhost:8502 (with --profile demo)
+#   - Jupyter: http://localhost:8888 (with --profile jupyter)
+#
+# Volumes:
+#   - ./data:/app/data          - Data files persist between container restarts
+#   - ./models:/app/models      - Trained models are saved here
+#   - ./logs:/app/logs          - Training logs
+#   - ./config:/app/config      - Configuration files
+#   - ./src:/app/src            - Source code (mounted for development)
+#   - ./notebooks:/app/notebooks - Jupyter notebooks
+#
+# Notes:
+#   - The main service (streamlit-config) starts by default
+#   - Other services use profiles and only start when explicitly requested
+#   - All services share the same Docker image (built from Dockerfile)
+#   - Volumes ensure data persistence across container restarts

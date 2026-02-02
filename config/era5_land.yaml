@@ -1,0 +1,12 @@
+era5_land:
+  use_era5_land: false  # Feature flag; keep false to preserve synthetic defaults.
+  data_path: "data/era5_land_2025_nc3.nc"
+  resample_freq: "1D"
+  lat_name: "latitude"
+  lon_name: "longitude"
+  time_name: "time"
+  soil_depth_mapping:
+    layer_0_7cm: [0]
+    layer_7_28cm: [1]
+    layer_28_100cm: [2]
+    layer_100_289cm: [3]

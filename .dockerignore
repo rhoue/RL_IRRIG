@@ -1,0 +1,79 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Data files (large, should be mounted as volumes)
+data/*.csv
+data/*.parquet
+data/*.pkl
+data/*.h5
+data/*.hdf5
+
+# Model artifacts (should be mounted or downloaded)
+models/*.pth
+models/*.pt
+models/*.h5
+models/*.pkl
+models/*.zip
+
+# Logs
+logs/
+*.log
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+!README.md
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment files (sensitive)
+.env
+.env.local
+*.key
+*.pem
+

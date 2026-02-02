@@ -13,12 +13,14 @@ from typing import Optional, Dict, Any
 # Import de generate_weather depuis utils_weather
 try:
     from src.utils_weather import generate_weather
+    from src.data_loader import load_data_for_simulation
 except ImportError:
     # Fallback si l'import ne fonctionne pas
     import sys
     import os
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from src.utils_weather import generate_weather
+    from src.data_loader import load_data_for_simulation
 
 
 # ============================================================================
@@ -356,6 +358,42 @@ def rule_proportionnelle(psi_t, psi_target=40.0, k_I=0.1, I_max=20.0, **_):
 
 
 # ============================================================================
+# SOURCES MÉTÉO EXTERNES (ERA5-Land, CSV, API)
+# ============================================================================
+
+
+def _prepare_external_weather(
+    data_source: str = "synthetic",
+    data_path: Optional[str] = None,
+    era5_land_cfg: Optional[Dict[str, Any]] = None,
+    data_loader_kwargs: Optional[Dict[str, Any]] = None,
+):
+    """
+    Charge un bundle météo externe si demandé, sinon retourne None.
+    """
+    resolved_source = data_source
+    resolved_kwargs: Dict[str, Any] = data_loader_kwargs.copy() if data_loader_kwargs else {}
+
+    if era5_land_cfg and era5_land_cfg.get("use_era5_land"):
+        resolved_source = "era5_land"
+        data_path = era5_land_cfg.get("data_path", data_path)
+        # Propager les autres clés (lat_name, lon_name, soil_depth_mapping, etc.)
+        for k, v in era5_land_cfg.items():
+            if k not in ("use_era5_land", "data_path"):
+                resolved_kwargs.setdefault(k, v)
+
+    if resolved_source == "synthetic":
+        return None, resolved_source, data_path, resolved_kwargs
+
+    bundle = load_data_for_simulation(
+        data_source=resolved_source,
+        file_path=data_path,
+        **resolved_kwargs,
+    )
+    return bundle, resolved_source, data_path, resolved_kwargs
+
+
+# ============================================================================
 # FONCTIONS DE SIMULATION
 # ============================================================================
 
@@ -366,7 +404,8 @@ def simulate_scenario1(
     soil: Optional[PhysicalBucket] = None,
     rule_fn=rule_seuil_unique,
     rule_kwargs=None,
-    weather_params: Optional[Dict[str, Any]] = None
+    weather_params: Optional[Dict[str, Any]] = None,
+    external_weather: Optional[Dict[str, Any]] = None,
 ):
     """
     Simule le SCÉNARIO 1 : modèle physique + règles simples d'irrigation.
@@ -418,10 +457,27 @@ def simulate_scenario1(
     if rule_kwargs is None:
         rule_kwargs = {}
     
-    # Génération météo avec paramètres personnalisés
-    # Génère rain, et0, Kc pour toute la saison (déterministe pour une graine donnée)
-    weather_kwargs = weather_params if weather_params else {}
-    rain, et0, Kc = generate_weather(T=T, seed=seed, **weather_kwargs)
+    # Génération météo avec paramètres personnalisés ou bundle externe
+    if external_weather is not None and "rain" in external_weather:
+        rain = np.asarray(external_weather["rain"], dtype=np.float32)
+        T = len(rain)
+        et0 = np.asarray(external_weather.get("et0", np.ones_like(rain)), dtype=np.float32)
+        if "Kc" in external_weather:
+            Kc = np.asarray(external_weather["Kc"], dtype=np.float32)
+        else:
+            Kc = np.zeros_like(rain, dtype=np.float32)
+            for t in range(len(Kc)):
+                if t < 20:
+                    Kc[t] = 0.3
+                elif t < 50:
+                    Kc[t] = 0.3 + (1.15 - 0.3) * (t - 20) / (50 - 20)
+                elif t < 90:
+                    Kc[t] = 1.15
+                else:
+                    Kc[t] = 1.15 + (0.7 - 1.15) * (t - 90) / max(len(Kc) - 90, 1)
+    else:
+        weather_kwargs = weather_params if weather_params else {}
+        rain, et0, Kc = generate_weather(T=T, seed=seed, **weather_kwargs)
 
     # Initialisation des tableaux pour stocker l'historique
     # T+1 pour S et psi (état initial + T jours)
@@ -507,7 +563,19 @@ def simulate_scenario1(
 # FONCTIONS UTILITAIRES
 # ============================================================================
 
-def make_env(seed=None, season_length=None, max_irrigation=None, soil_params=None, weather_params=None, weather_shift_cfg=None):
+def make_env(
+    seed=None,
+    season_length=None,
+    max_irrigation=None,
+    soil_params=None,
+    weather_params=None,
+    goal_spec=None,
+    weather_shift_cfg=None,
+    data_source: str = "synthetic",
+    data_path: Optional[str] = None,
+    era5_land_cfg: Optional[Dict[str, Any]] = None,
+    data_loader_kwargs: Optional[Dict[str, Any]] = None,
+):
     """
     Fabrique une fonction d'initialisation d'environnement avec Monitor.
     
@@ -523,6 +591,7 @@ def make_env(seed=None, season_length=None, max_irrigation=None, soil_params=Non
         max_irrigation (float, optional): Dose maximale d'irrigation (défaut depuis utils_physics_config)
         soil_params (dict, optional): Paramètres du sol
         weather_params (dict, optional): Paramètres météorologiques
+        goal_spec (dict, optional): Priorités/objets lexicographiques (Option A)
         weather_shift_cfg (dict, optional): Décalage météo (robustesse)
         
     Returns:
@@ -540,6 +609,16 @@ def make_env(seed=None, season_length=None, max_irrigation=None, soil_params=Non
     seed = default_config["seed"]
     season_length = default_config["season_length"]
     max_irrigation = default_config["max_irrigation"]
+
+    # Charger un bundle météo externe si demandé (feature flag ERA5-Land ou autre)
+    weather_bundle, resolved_source, _, resolved_kwargs = _prepare_external_weather(
+        data_source=data_source,
+        data_path=data_path,
+        era5_land_cfg=era5_land_cfg,
+        data_loader_kwargs=data_loader_kwargs,
+    )
+    if weather_bundle and "rain" in weather_bundle:
+        season_length = len(weather_bundle["rain"])
     
     # Import conditionnel de Monitor
     try:
@@ -564,7 +643,9 @@ def make_env(seed=None, season_length=None, max_irrigation=None, soil_params=Non
             seed=seed,
             soil_params=soil_params,  # utils_env_gymnasium utilise 'soil_params'
             weather_params=weather_params,  # Supporté par utils_env_gymnasium
+            goal_spec=goal_spec,
             weather_shift_cfg=weather_shift_cfg,
+            external_weather=weather_bundle if resolved_source != "synthetic" else None,
         )
         return Monitor(env)
     return _init
@@ -580,9 +661,20 @@ def evaluate_episode(
     residual_ode=None,
     residual_cde=None,
     seq_len_cde=5,
+    patchtst_model=None,
+    seq_len_patchtst=30,
+    wm_encoder=None,
+    wm_transition=None,
+    wm_decoder=None,
+    wm_seq_len=30,
+    wm_hybrid_alpha=0.5,
+    data_source: str = "synthetic",
+    data_path: Optional[str] = None,
+    era5_land_cfg: Optional[Dict[str, Any]] = None,
+    data_loader_kwargs: Optional[Dict[str, Any]] = None,
 ):
     """
-    Évalue un modèle PPO entraîné en exécutant un épisode complet (SCÉNARIO 2, 3 ou 4).
+    Évalue un modèle PPO entraîné en exécutant un épisode complet (SCÉNARIO 2, 3, 4 ou 5).
     
     PRINCIPE :
     Simule une saison complète en utilisant la politique apprise par le modèle PPO.
@@ -603,6 +695,8 @@ def evaluate_episode(
         residual_ode (nn.Module, optional): Modèle Neural ODE pour le scénario 3 (hybride)
         residual_cde (nn.Module, optional): Modèle Neural CDE pour le scénario 4 (hybride)
         seq_len_cde (int, optional): Longueur de séquence pour le CDE (défaut: 5)
+        patchtst_model (nn.Module, optional): Modèle PatchTST pour le scénario 5 (extracteur de features)
+        seq_len_patchtst (int, optional): Longueur de séquence pour PatchTST (défaut: 30)
         
     Returns:
         dict: Dictionnaire contenant :
@@ -627,6 +721,30 @@ def evaluate_episode(
     except ImportError:
         IrrigationEnvPhysicalSimple = None
     
+    # Import conditionnel de PatchTSTEnvWrapper si nécessaire
+    PatchTSTEnvWrapper = None
+    PhysicsInformedWorldModelWrapper = None
+    if patchtst_model is not None:
+        try:
+            # PatchTSTEnvWrapper sera importé depuis utils_patch_tst (à créer)
+            from src.utils_patch_tst import PatchTSTEnvWrapper  # type: ignore
+        except ImportError:
+            # Si utils_patch_tst n'existe pas encore, on ne peut pas wrapper
+            PatchTSTEnvWrapper = None
+    if wm_encoder is not None and wm_transition is not None:
+        try:
+            from src.utils_world_model import PhysicsInformedWorldModelWrapper  # type: ignore
+        except ImportError:
+            PhysicsInformedWorldModelWrapper = None
+    
+    # Charger un bundle météo externe si demandé
+    weather_bundle, resolved_source, _, resolved_kwargs = _prepare_external_weather(
+        data_source=data_source,
+        data_path=data_path,
+        era5_land_cfg=era5_land_cfg,
+        data_loader_kwargs=data_loader_kwargs,
+    )
+
     # Création d'un nouvel environnement pour l'évaluation
     # Utilise une graine différente de l'entraînement pour tester la généralisation
     # Convertir soil_params en format 'soil' si nécessaire
@@ -636,20 +754,22 @@ def evaluate_episode(
         soil_dict = soil_params
     
     # Choix de l'environnement :
-    # - Scénario 2 (pas de modèle résiduel) : utiliser utils_env_gymnasium
+    # - Scénario 2 (pas de modèle résiduel ni PatchTST) : utiliser utils_env_gymnasium
     #   pour rester cohérent avec l'entraînement et la génération météo du scénario 1.
-    # - Scénarios 3-4 : utiliser utils_env_modeles (support des modèles résiduels).
+    # - Scénarios 3-5 : utiliser utils_env_modeles (support des modèles résiduels / PatchTST).
     use_simple_env = (
         residual_ode is None
         and residual_cde is None
+        and patchtst_model is None
     )
     if use_simple_env and IrrigationEnvPhysicalSimple is not None:
         env = IrrigationEnvPhysicalSimple(
-            season_length=season_length,
+            season_length=len(weather_bundle["rain"]) if weather_bundle and "rain" in weather_bundle else season_length,
             max_irrigation=max_irrigation,
             seed=seed,
             soil_params=soil_params,
-            weather_params=weather_params
+            weather_params=weather_params,
+            external_weather=weather_bundle if resolved_source != "synthetic" else None,
         )
     else:
         env = IrrigationEnvPhysicalExternal(
@@ -661,9 +781,30 @@ def evaluate_episode(
             residual_ode=residual_ode,  # Modèle résiduel pour le scénario 3
             residual_cde=residual_cde,  # Modèle résiduel pour le scénario 4
             seq_len_cde=seq_len_cde,  # Longueur de séquence pour le CDE
-            device="cpu"
+            device="cpu",
+            external_weather=weather_bundle if resolved_source != "synthetic" else None,
         )
         
+    # Envelopper avec PatchTST si un modèle est fourni (Scénario 5)
+    if patchtst_model is not None and PatchTSTEnvWrapper is not None:
+        env = PatchTSTEnvWrapper(
+            env,
+            patchtst_model=patchtst_model,
+            seq_len=seq_len_patchtst,
+            device="cpu"
+        )
+    # Envelopper avec wrapper physics-informed (Scénario 6 Phase 3)
+    if wm_encoder is not None and wm_transition is not None and PhysicsInformedWorldModelWrapper is not None:
+        env = PhysicsInformedWorldModelWrapper(
+            env,
+            encoder_model=wm_encoder,
+            transition_model=wm_transition,
+            decoder_model=wm_decoder,
+            seq_len=wm_seq_len,
+            hybrid_alpha=wm_hybrid_alpha,
+            device="cpu"
+        )
+    
     obs, info = env.reset()
 
     # Initialisation des historiques avec l'état initial
@@ -705,6 +846,9 @@ def evaluate_episode(
         ETc_hist.append(float(ETc))
         D_hist.append(float(D))
 
+    season_length_out = len(I_hist)
+    # Simple soil moisture layers proxy: store bucket total as a single layer
+    soil_moisture_layers = {"bucket_total_mm": np.asarray(S_hist)}
     return {
         "psi": np.asarray(psi_hist),
         "S": np.asarray(S_hist),
@@ -712,9 +856,13 @@ def evaluate_episode(
         "R": np.asarray(R_hist),
         "ETc": np.asarray(ETc_hist),
         "D": np.asarray(D_hist),
+        "et0": np.asarray(getattr(env, "et0", []), dtype=np.float32) if hasattr(env, "et0") else None,
+        "Kc": np.asarray(getattr(env, "Kc", []), dtype=np.float32) if hasattr(env, "Kc") else None,
+        "fluxes": {"runoff": np.asarray(D_hist, dtype=np.float32)},
+        "soil_moisture_layers": soil_moisture_layers,
         "env_summary": {
             "S_fc": env.S_fc if hasattr(env, 'S_fc') else (env.soil.S_fc if hasattr(env, 'soil') else 90.0),
             "S_wp": env.S_wp if hasattr(env, 'S_wp') else (env.soil.S_wp if hasattr(env, 'soil') else 30.0),
-            "season_length": season_length
+            "season_length": season_length_out
         },
     }

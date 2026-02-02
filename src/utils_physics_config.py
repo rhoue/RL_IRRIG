@@ -2,7 +2,7 @@
 Configuration par défaut pour les paramètres physiques et d'entraînement.
 
 Ce module centralise les paramètres par défaut utilisés dans les fonctions d'entraînement
-(train_ppo_hybrid_ode, train_ppo_hybrid_cde, etc.) pour garantir
+(train_ppo_hybrid_ode, train_ppo_hybrid_cde, train_ppo_with_patchtst, etc.) pour garantir
 la reproductibilité et la cohérence entre les différents scénarios.
 
 Paramètres définis :
@@ -38,23 +38,23 @@ DEFAULT_TOTAL_TIMESTEPS = 50000  # Nombre total de pas d'entraînement
 # PARAMÈTRES DU SOL
 # ============================================================================
 DEFAULT_SOIL_PARAMS = {
-    "Z_r": 600.0,           # Profondeur zone racinaire (mm)
+    "Z_r": 280.0,           # Profondeur zone racinaire (mm) - alignée sur 0-28 cm
     "theta_s": 0.45,        # Teneur en eau volumique à saturation
-    "theta_fc": 0.30,       # Teneur en eau à la capacité au champ
-    "theta_wp": 0.15,       # Teneur en eau au point de flétrissement
+    "theta_fc": 0.14,       # Teneur en eau à la capacité au champ (ajustée vers swvl ERA5)
+    "theta_wp": 0.07,       # Teneur en eau au point de flétrissement
     "psi_sat": 10.0,        # Tension à saturation (cbar)
     "psi_fc": 33.0,         # Tension à la capacité au champ (cbar)
     "psi_wp": 1500.0,       # Tension au point de flétrissement (cbar)
-    "k_d": 0.3,             # Coefficient de drainage
+    "k_d": 0.11,            # Coefficient de drainage (réduit pour limiter le drainage)
     "eta_I": 0.85,          # Efficacité d'irrigation (0-1)
     "psi_ET_crit": 80.0     # Seuil de stress ET (cbar)
 }
 
 # Limites et pas pour les widgets Streamlit - Paramètres du sol
 SOIL_PARAMS_RANGES = {
-    "Z_r": {"min": 300.0, "max": 1000.0, "step": 50.0},
+    "Z_r": {"min": 100.0, "max": 1000.0, "step": 10.0},
     "theta_s": {"min": 0.30, "max": 0.60, "step": 0.05},
-    "theta_fc": {"min": 0.20, "max": 0.40, "step": 0.05},
+    "theta_fc": {"min": 0.10, "max": 0.40, "step": 0.05},
     "theta_wp": {"min": 0.10, "max": 0.25, "step": 0.05},
     "psi_sat": {"min": 5.0, "max": 20.0, "step": 1.0},
     "psi_fc": {"min": 20.0, "max": 50.0, "step": 1.0},
@@ -88,6 +88,24 @@ WEATHER_PARAMS_RANGES = {
     "p_rain_late": {"min": 0.10, "max": 0.40, "step": 0.05},
     "rain_min": {"min": 1.0, "max": 10.0, "step": 1.0},
     "rain_max": {"min": 15.0, "max": 50.0, "step": 5.0}
+}
+
+# ============================================================================
+# PARAMÈTRES ERA5-LAND (feature flag)
+# ============================================================================
+DEFAULT_ERA5_LAND_CONFIG = {
+    "use_era5_land": False,
+    "data_path": "data/era5_land_sample.nc",
+    "resample_freq": "1D",
+    "lat_name": "latitude",
+    "lon_name": "longitude",
+    "time_name": "time",
+    "soil_depth_mapping": {
+        "layer_0_7cm": [0],
+        "layer_7_28cm": [1],
+        "layer_28_100cm": [2],
+        "layer_100_289cm": [3],
+    },
 }
 
 
@@ -222,6 +240,15 @@ def get_weather_params_ranges() -> Dict:
         contenant 'min', 'max', et 'step'
     """
     return WEATHER_PARAMS_RANGES.copy()
+
+
+def get_default_era5_land_config(**kwargs) -> Dict:
+    """
+    Retourne la configuration par défaut pour ERA5-Land (feature flag).
+    """
+    config = DEFAULT_ERA5_LAND_CONFIG.copy()
+    config.update(kwargs)
+    return config
 
 
 def get_default_config(**kwargs) -> Dict:

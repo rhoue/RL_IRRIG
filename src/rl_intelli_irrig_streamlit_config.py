@@ -2754,5 +2754,14 @@ Note: Assurez-vous d'utiliser le même environnement Python que Streamlit.
                     st.json(results)
                 except Exception as exc:
                     st.error(f"Validation ERA5-Land échouée: {exc}")
+
+    st.markdown("---")
+    st.markdown(
+        "<div style='text-align:center; color:#6b7280; font-size:0.9rem;'>"
+        "EIPEx - Efficient Irrigation Policy Explorer • "
+        "© 2025 Raymond houé Ngouna (raymond.houe-ngouna@uttop.fr) • Powered by Streamlit"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 if __name__ == "__main__":
     main()

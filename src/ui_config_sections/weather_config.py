@@ -29,8 +29,45 @@ def render_weather_config(language: str = "fr") -> Dict[str, float]:
         "rain_min": "Pluie min (mm)" if language == "fr" else "Rain min (mm)",
         "rain_max": "Pluie max (mm)" if language == "fr" else "Rain max (mm)",
     }
+    source_labels = {
+        "source": "Source météo" if language == "fr" else "Weather source",
+        "synthetic": "Synthétique" if language == "fr" else "Synthetic",
+        "era5_land": "ERA5-Land (fichier)" if language == "fr" else "ERA5-Land (file)",
+        "path": "Chemin fichier ERA5-Land (.nc/.zarr)" if language == "fr" else "ERA5-Land file path (.nc/.zarr)",
+        "freq": "Fréquence de rééchantillonnage (ex: 1D)" if language == "fr" else "Resample frequency (e.g., 1D)",
+    }
 
     st.markdown(labels["header"])
+
+    st.markdown("#### Source météo / Weather source")
+    col_src1, col_src2 = st.columns([1, 2])
+    default_era5_path = "data/era5_land_fr_spring2024_all_nc3.nc"
+    with col_src1:
+        weather_source = st.radio(
+            source_labels["source"],
+            options=["synthetic", "era5_land"],
+            format_func=lambda v: source_labels.get(v, v),
+            index=0 if st.session_state.get("weather_source", "synthetic") == "synthetic" else 1,
+            key="weather_source",
+        )
+    with col_src2:
+        # Pre-fill with merged ERA5-Land sample if none set yet
+        if not st.session_state.get("era5_path"):
+            st.session_state["era5_path"] = default_era5_path
+        era5_path = st.text_input(
+            source_labels["path"],
+            value=st.session_state.get("era5_path", default_era5_path),
+            key="era5_path",
+            placeholder="data/era5_land_sample.nc",
+            disabled=weather_source != "era5_land",
+        )
+        era5_freq = st.text_input(
+            source_labels["freq"],
+            value=st.session_state.get("era5_freq", "1D"),
+            key="era5_freq",
+            placeholder="1D",
+            disabled=weather_source != "era5_land",
+        )
 
     st.markdown(labels["et0_header"])
     col1, col2, col3 = st.columns(3)
@@ -113,4 +150,5 @@ def render_weather_config(language: str = "fr") -> Dict[str, float]:
 
     # Mise à disposition pour l'ensemble des scénarios
     st.session_state.weather_params = weather_params
+    # Widgets already manage session_state for weather_source/era5_path/era5_freq
     return weather_params

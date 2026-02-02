@@ -297,7 +297,20 @@ def plot_episode_rollout(
     R = rollout["R"]
     ETc = rollout["ETc"]
     D = rollout["D"]
-    season_length = rollout["env_summary"]["season_length"]
+    # Derive season length defensively from arrays to avoid shape mismatches
+    season_length = rollout.get("env_summary", {}).get("season_length", len(I))
+    if len(psi) >= 2:
+        season_length = min(season_length, len(psi) - 1)
+    if len(S) >= 2:
+        season_length = min(season_length, len(S) - 1)
+    # Clip arrays to consistent lengths
+    psi = np.asarray(psi)[: season_length + 1]
+    S = np.asarray(S)[: season_length + 1]
+    I = np.asarray(I)[: season_length]
+    R = np.asarray(R)[: season_length]
+    ETc = np.asarray(ETc)[: season_length]
+    D = np.asarray(D)[: season_length]
+    season_length = min(season_length, len(I))
     S_fc = rollout["env_summary"]["S_fc"]
     S_wp = rollout["env_summary"]["S_wp"]
 

@@ -268,9 +268,12 @@ def train_ppo_hybrid_ode_cont(
     weather_params: Optional[Dict] = None,
     ppo_kwargs: Optional[Dict] = None,
     progress_callback=None,
+    lexico_config=None,
+    goal_spec: Optional[Dict[str, Any]] = None,
     teacher_model=None,
     distill_coef: float = 0.0,
     weather_shift_cfg: Optional[Dict[str, Any]] = None,
+    external_weather: Optional[Dict[str, Any]] = None,
 ):
     """
     Entraîne PPO avec un résiduel Neural ODE continu (drop-in pour residual_ode).
@@ -306,12 +309,21 @@ def train_ppo_hybrid_ode_cont(
             weather_params=weather_params,
             residual_ode=residual_ode_model,
             device="cpu",
+            goal_spec=goal_spec,
             weather_shift_cfg=weather_shift_cfg,
+            external_weather=external_weather,
         )
         return Monitor(env)
 
     env = DummyVecEnv([make_env])
 
+    # Ajouter le wrapper lexicographique si fourni
+    try:
+        from src.utils_lexico_goal import wrap_with_lexico
+        if lexico_config:
+            env = DummyVecEnv([lambda: wrap_with_lexico(make_env(), lexico_config)])
+    except Exception:
+        pass
 
     from src.utils_ppo_training import create_ppo_callbacks, get_default_ppo_config
 

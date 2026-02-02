@@ -1,4 +1,8 @@
-# RL Intelligent Irrigation
+# EIPEx - Efficient Irrigation Policy Explorer
+
+EIPEx is an operational framework for exploring efficient irrigation policies under uncertainty.
+It combines reinforcement learning, physical modeling, and policy-oriented evaluation to support
+governance of water-efficient use beyond a simple technology demonstrator.
 
 Research prototype for irrigation control with reinforcement learning (RL).
 It combines:
@@ -62,6 +66,47 @@ streamlit run src/rl_intelli_irrig_streamlit_config.py
 ```bash
 python src/rl_intelli_irrig_gradio.py
 ```
+
+### 5) Run the pure Python CLI (`main.py`)
+
+Run one scenario:
+
+```bash
+# Scenario 1 (rule-based baseline)
+python main.py run --scenario scenario1
+
+# Scenario 2 (requires a trained PPO model)
+python main.py run --scenario scenario2 --model-path models/scenario2_ppo.zip
+
+# Scenario 3 (requires PPO + residual model)
+python main.py run --scenario scenario3 \
+  --model-path models/scenario3_ppo.zip \
+  --residual-path models/scenario3_residual.pt
+
+# Scenario 3b (continuous Neural ODE residual)
+python main.py run --scenario scenario3b \
+  --model-path models/scenario3b_ppo.zip \
+  --residual-path models/scenario3b_residual.pt
+```
+
+Compare saved scenario runs:
+
+```bash
+python main.py compare --scenarios scenario1 scenario2 scenario3
+```
+
+Useful options:
+
+- `--season-length`
+- `--seed`
+- `--max-irrigation`
+- `--output-dir` / `--input-dir`
+- `--era5-path` and `--era5-freq` (for ERA5-Land weather input)
+
+CLI outputs:
+
+- `scenarioX.npz` + `scenarioX_metrics.json` for each run
+- `comparison_metrics.csv` and comparison figures for `compare`
 
 ## ERA5-Land data usage
 

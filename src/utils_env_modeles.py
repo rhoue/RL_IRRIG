@@ -43,6 +43,7 @@ class IrrigationEnvPhysical(gym.Env):
         max_irrigation: float = 20.0,
         seed: int = 123,
         weather_params: Optional[Dict[str, Any]] = None,
+        external_weather: Optional[Dict[str, np.ndarray]] = None,
         residual_ode: Optional[nn.Module] = None,
         residual_cde: Optional[nn.Module] = None,
         seq_len_cde: int = 5,
@@ -50,6 +51,7 @@ class IrrigationEnvPhysical(gym.Env):
         reward_cfg: Optional[Dict[str, float]] = None,
         soil: Optional[Dict[str, float]] = None,
         hazard_cfg: Optional[Dict[str, Any]] = None,
+        goal_spec: Optional[Dict[str, Any]] = None,
         weather_shift_cfg: Optional[Dict[str, Any]] = None,
     ):
         super().__init__()
@@ -131,6 +133,7 @@ class IrrigationEnvPhysical(gym.Env):
         self.cum_irrig = 0.0  # Cumulative irrigation applied over the season
         self.cum_drain = 0.0  # Cumulative drainage (mm)
         self.events_count = 0  # Number of irrigation events
+        self.goal_spec = goal_spec or {}
         self.weather_shift_cfg = weather_shift_cfg or {}
 
         # Hazard events configuration (MUST BE BEFORE weather generation)
@@ -167,12 +170,16 @@ class IrrigationEnvPhysical(gym.Env):
 
         # Weather configuration (used to align scenarios on the same generator)
         self.weather_params = weather_params
+        self.external_weather = external_weather
 
         # Weather series and crop coefficients
         self.rain = None  # Daily rainfall series (mm)
         self.et0 = None  # Daily reference evapotranspiration series (mm/day)
         self.Kc = None  # Daily crop coefficient series (dimensionless)
         self._generate_weather()
+        # Adjust season length if external weather is provided
+        if self.rain is not None:
+            self.T = len(self.rain)
         
         # Generate hazard events if enabled
         if self.enable_hazards:
@@ -240,6 +247,25 @@ class IrrigationEnvPhysical(gym.Env):
            - Kc: Percentage-based phases (15%/25%/40%/20%)
            This is a simpler fallback method
         """
+        # Use external bundle if provided
+        if self.external_weather and "rain" in self.external_weather:
+            self.rain = np.asarray(self.external_weather["rain"], dtype=np.float32)
+            self.et0 = np.asarray(self.external_weather.get("et0", np.ones_like(self.rain)), dtype=np.float32)
+            if "Kc" in self.external_weather:
+                self.Kc = np.asarray(self.external_weather["Kc"], dtype=np.float32)
+            else:
+                self.Kc = np.zeros_like(self.rain, dtype=np.float32)
+                for t in range(len(self.Kc)):
+                    if t < 20:
+                        self.Kc[t] = 0.3
+                    elif t < 50:
+                        self.Kc[t] = 0.3 + (1.15 - 0.3) * (t - 20) / (50 - 20)
+                    elif t < 90:
+                        self.Kc[t] = 1.15
+                    else:
+                        self.Kc[t] = 1.15 + (0.7 - 1.15) * (t - 90) / max(len(self.Kc) - 90, 1)
+            return
+
         # Use shared weather generator when weather_params is provided (even if empty dict)
         # This ensures weather consistency across all scenarios for fair comparison
         # Pass weather_params={} to use default parameters from shared generator
@@ -750,6 +776,34 @@ class IrrigationEnvPhysical(gym.Env):
         obs = np.array([self.psi, self.S, R_t, ET0_t], dtype=np.float32)
         return obs
 
+    def _lexico_deviations(self, psi_value: float):
+        """
+        Calcule les déviations lexicographiques à partir de goal_spec (si fourni).
+        Renvoie [d_P1, d_P2, d_P3] ou None si non configuré.
+        """
+        if not self.goal_spec:
+            return None
+        targets = self.goal_spec.get(
+            "targets",
+            {"stress_max": 55.0, "irrig_max": 250.0, "drain_max": 60.0, "events_max": 20},
+        )
+        priorities = self.goal_spec.get(
+            "priorities",
+            {"P1": ["stress"], "P2": ["drainage"], "P3": ["irrigation"]},
+        )
+        deviations_map = {
+            "stress": max(0.0, psi_value - targets.get("stress_max", 55.0)),
+            "irrigation": max(0.0, self.cum_irrig - targets.get("irrig_max", 250.0)),
+            "drainage": max(0.0, self.cum_drain - targets.get("drain_max", 60.0)),
+            "events": max(0.0, self.events_count - targets.get("events_max", 20)),
+        }
+        result = []
+        for tier in ("P1", "P2", "P3"):
+            objs = priorities.get(tier, [])
+            tier_dev = sum(deviations_map.get(obj, 0.0) for obj in objs)
+            result.append(tier_dev)
+        return result
+
     def _build_features_cde(self, psi: float, I: float, R: float, ET0: float) -> np.ndarray:
         """
         Build feature vector for Neural CDE (Controlled Differential Equation) model.
@@ -859,12 +913,10 @@ class IrrigationEnvPhysical(gym.Env):
         self.cum_drain = 0.0  # Reset cumulative drainage
         self.events_count = 0  # Reset irrigation events counter
 
-        # Generate new weather series for this episode
-        # IMPORTANT: Weather is regenerated on each reset() call
-        # - If seed is provided: same seed = same weather (reproducible)
-        # - If seed is None: uses current RNG state = different weather each time
-        # This differs from utils_env_gymnasium.py which generates weather only at initialization
-        self._generate_weather()
+        # Generate new weather series for this episode unless external_weather is fixed
+        # IMPORTANT: Weather is regenerated on each reset() call when external_weather is None
+        if self.external_weather is None:
+            self._generate_weather()
         
         # Regenerate hazard events if enabled
         # Hazards are randomly scheduled at the start of each episode
@@ -1078,6 +1130,9 @@ class IrrigationEnvPhysical(gym.Env):
             "active_hazards": active_hazards,  # List of hazards active this day
             "hazard_count": len(active_hazards),  # Number of active hazards
         }
+        deviations = self._lexico_deviations(psi_next)
+        if deviations is not None:
+            info["lexico_deviations"] = deviations
         
         # Add terminal information if episode is complete
         if done:
