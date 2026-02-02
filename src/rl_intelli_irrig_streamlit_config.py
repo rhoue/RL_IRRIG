@@ -111,6 +111,17 @@ from src.utils_ui import (
 from src.utils_plot import (
     configure_matplotlib, plot_episode_rollout, plot_scenario1
 )
+from src.data_loader import load_data_for_simulation
+from src.validation.era5_land_checks import summarize_era5_land_validation
+from src.validation.reporting import (
+    format_validation_table,
+    rollout_to_sim_outputs,
+)
+from src.data_loader import load_data_for_simulation
+from src.validation.reporting import (
+    format_validation_table,
+    rollout_to_sim_outputs,
+)
 
 # ----------------------------------------------------------------------------
 # UTILITAIRES SCÉNARIO 3 : NEURAL ODE (utils_neuro_ode.py)
@@ -138,29 +149,7 @@ from src.utils_neuro_ode_cont import (
     ContinuousResidualODE, ContinuousResidualODEDataset,
     pretrain_continuous_residual_ode, train_ppo_hybrid_ode_cont
 )
-
-# ----------------------------------------------------------------------------
-# UTILITAIRES SCÉNARIO 4 : NEURAL CDE (utils_neuro_cde.py)
-# ----------------------------------------------------------------------------
-# Classes et fonctions pour le scénario 4 (modèle hybride Physique + Neural CDE) :
-# - NeuralCDEPsiDiscrete : Modèle PyTorch Neural CDE discretisé pour corriger ψ
-#   * Principe : Utilise une séquence d'états passés [X_{t-L+1}, ..., X_t] où X_k = [ψ_k, I_k, R_k, ET0_k]
-#   * Schéma d'Euler : Z_{k+1} = Z_k + f_θ(Z_k, X_k) · ΔX_k
-#   * État latent Z_t encode l'historique, readout Z_t → Δψ_t
-#   * Avantage : Capture les dépendances temporelles longues, gère données irrégulières
-# - CDEPsiDiscreteDataset : Dataset PyTorch pour pré-entraîner le modèle CDE
-#   * Génère des séquences de longueur seq_len_cde (typiquement 5-10 pas)
-#   * Crée des paires (séquence X, Δψ) pour l'apprentissage supervisé
-# - pretrain_residual_cde() : Pré-entraîne le modèle CDE sur des données simulées
-#   * Génère des trajectoires, crée des séquences, entraîne avec MSE loss
-#   * Retourne le modèle pré-entraîné
-# - train_ppo_hybrid_cde() : Entraîne un agent PPO sur l'environnement hybride (physique + Neural CDE)
-#   * Crée IrrigationEnvPhysical avec residual_cde=modèle pré-entraîné et seq_len_cde
-#   * L'environnement maintient un historique des états pour le CDE
-#   * Entraîne PPO et retourne le modèle entraîné + métriques
-from src.utils_neuro_cde import (
-    NeuralCDEPsiDiscrete, CDEPsiDiscreteDataset, pretrain_residual_cde, train_ppo_hybrid_cde
-)
+from src.utils_ui_ai import render_ai_assistant_sidebar
 
 # ----------------------------------------------------------------------------
 # UTILITAIRES MODÈLE PHYSIQUE (utils_physical_model.py)
@@ -190,7 +179,7 @@ from src.utils_neuro_cde import (
 #   * Retourne une fonction _init() qui crée l'environnement avec Monitor
 #   * Utilisé pour l'entraînement PPO du scénario 2
 # - evaluate_episode() : Évalue un modèle PPO en exécutant un épisode complet
-#   * Supporte les scénarios (2, 3, 4) avec ou sans modèles résiduels
+#   * Supporte tous les scénarios (2, 3, 4, 5) avec ou sans modèles résiduels
 #   * Mode déterministe (pas d'exploration)
 #   * Retourne un dictionnaire avec les historiques complets de l'épisode
 from src.utils_physical_model import (
@@ -238,9 +227,15 @@ from src.utils_weather import generate_weather
 #   * Diffère de utils_env_modeles.py : version simple sans modèles résiduels, supporte weather_params
 from src.utils_env_gymnasium import IrrigationEnvPhysical
 
-#   * Entraîne PPO avec callbacks pour suivi de progression
-#   * Retourne le modèle PPO entraîné et les métriques d'entraînement
+# ----------------------------------------------------------------------------
 
+# ----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
+#        comme encodeur pour mapper les observations vers l'espace latent
+# - LatentTransitionODE : Modèle Neural ODE pour prédire les transitions dans l'espace latent
+#   * Architecture : MLP avec 2 couches cachées (64 neurones, Tanh)
+#   * Utilisé pour prédire les transitions futures dans l'espace latent (planning)
+#   * Entraîne le modèle de transition pour prédire z_{t+1} à partir de z_t, a_t, inputs_exog
 # ----------------------------------------------------------------------------
 # UI CONFIGURATION SECTIONS (modularized)
 # ----------------------------------------------------------------------------
@@ -259,16 +254,22 @@ configure_matplotlib()
 apply_custom_css()
 
 
+def _get_weather_source_cfg():
+    """
+    Retourne (data_source, data_path, era5_land_cfg) en fonction de la sélection UI.
+    """
+    source = st.session_state.get("weather_source", "synthetic")
+    path = st.session_state.get("era5_path", "")
+    freq = st.session_state.get("era5_freq", "1D")
+    if source == "era5_land" and path:
+        return "era5_land", path, {"use_era5_land": True, "data_path": path, "resample_freq": freq}
+    return "synthetic", None, None
+
+
 
 # ============================================================================
 # INTERFACE STREAMLIT
 # ============================================================================
-def _get_metric(metrics, keys):
-    for key in keys:
-        if key in metrics:
-            return metrics[key]
-    return None
-
 def main():
     """
     Point d'entrée de l'application Streamlit pour configurer, entraîner et évaluer
@@ -278,7 +279,8 @@ def main():
     - Scénario 1 : Modèle physique + règles simples (seuil, bande, proportionnelle)
     - Scénario 2 : PPO sur environnement physique
     - Scénario 3 : PPO hybride avec Neural ODE résiduel
-    - Scénario 4 : PPO hybride avec Neural CDE
+    - Scénario 3b : PPO hybride avec Neural ODE continu
+
     ORGANISATION UI :
     - Sidebar : configuration sol/météo/hyperparamètres et options d'entraînement
     - Onglets : un par scénario + sections Évaluation et Visualisation
@@ -304,18 +306,10 @@ def main():
         st.session_state.scenario3_rollout = None  # Résultats de l'évaluation scénario 3
     if "scenario3b_rollout" not in st.session_state:
         st.session_state.scenario3b_rollout = None  # Résultats de l'évaluation scénario 3b (Neural ODE continu)
-    if "scenario4_residual_model" not in st.session_state:
-        st.session_state.scenario4_residual_model = None  # Modèle Neural CDE pré-entraîné
-    if "scenario4_ppo_model" not in st.session_state:
-        st.session_state.scenario4_ppo_model = None  # Modèle PPO entraîné (scénario 4)
-    if "scenario4_pretrain_complete" not in st.session_state:
-        st.session_state.scenario4_pretrain_complete = False
-    if "scenario4_rollout" not in st.session_state:
-        st.session_state.scenario4_rollout = None  # Résultats de l'évaluation scénario 4
 
     # Sélecteur de langue global (zone principale) pour toutes les interfaces
     if "ui_language" not in st.session_state:
-        st.session_state.ui_language = "fr"
+        st.session_state.ui_language = "en"
     lang_choice_global = st.selectbox(
         "Langue / Language",
         options=["Français", "English"],
@@ -341,6 +335,22 @@ def main():
     # ========================================================================
     
     with st.sidebar:
+        # Display logo in sidebar header
+        logo_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "images", "logo.jpg")
+        if os.path.exists(logo_path):
+            st.sidebar.image(logo_path, width='stretch')
+        else:
+            # Fallback: try relative path from src directory
+            logo_path = os.path.join("images", "logo_rv.svg")
+            if os.path.exists(logo_path):
+                st.sidebar.image(logo_path, width='stretch')
+
+        st.markdown("&nbsp;")  # petit espace entre le logo et le contenu
+
+        current_lang = st.session_state.get("ui_language", "fr")
+
+        render_ai_assistant_sidebar(current_lang)
+
         st.markdown('<h2 class="section-header">⚙️ Configuration</h2>', unsafe_allow_html=True)
         render_soil_and_tension_config(language=current_lang)
         render_weather_config(language=current_lang)
@@ -366,12 +376,12 @@ def main():
         tr("🎓 Scénario 2 (Entraînement PPO)", "🎓 Scenario 2 (PPO training)"),
         tr("🔬 Scénario 3 (Neural ODE)", "🔬 Scenario 3 (Neural ODE)"),
         tr("🧠 Scénario 3b (Neural ODE continu)", "🧠 Scenario 3b (Continuous Neural ODE)"),
-        tr("🌀 Scénario 4 (Neural CDE)", "🌀 Scenario 4 (Neural CDE)"),
         tr("📈 Évaluation", "📈 Evaluation"),
         tr("📊 Visualisation", "📊 Visualization"),
         tr("⚖️ Comparaison", "⚖️ Comparison"),
+        tr("🧪 Validation ERA5-Land (avancée)", "🧪 Advanced ERA5-Land validation"),
     ]
-    tab1, tab2, tab3, tab3b, tab4, tab5, tab6, tab7 = st.tabs(tab_labels)
+    tab1, tab2, tab3, tab3b, tab5, tab6, tab7, tab8 = st.tabs(tab_labels)
     
     # ========================================================================
     # ONGLET 1 : SCÉNARIO 1 - MODÈLE PHYSIQUE + RÈGLES SIMPLES
@@ -594,19 +604,51 @@ def main():
                     # Création du modèle de sol avec les paramètres configurés
                     soil = PhysicalBucket(**soil_params)
                     
+                    # Charger ERA5-Land si sélectionné
+                    data_source, data_path, era5_land_cfg = _get_weather_source_cfg()
+                    external_weather = None
+                    effective_T = season_length
+                    if data_source == "era5_land" and data_path:
+                        try:
+                            external_weather = load_data_for_simulation(
+                                data_source="era5_land",
+                                file_path=data_path,
+                                resample_freq=era5_land_cfg.get("resample_freq", "1D") if era5_land_cfg else "1D",
+                            )
+                            if external_weather and "rain" in external_weather:
+                                effective_T = len(np.asarray(external_weather["rain"]))
+                        except Exception as exc:
+                            st.warning(f"⚠️ Impossible de charger ERA5-Land, utilisation météo synthétique : {exc}")
+                            external_weather = None
+                    
                     # Simulation
                     sim_result = simulate_scenario1(
-                        T=season_length,
+                        T=effective_T,
                         seed=seed,
                         I_max=max_irrigation,
                         soil=soil,
                         rule_fn=rule_fn,
                         rule_kwargs=rule_kwargs,
-                        weather_params=weather_params
+                        weather_params=weather_params,
+                        external_weather=external_weather,
                     )
                     
                     # Sauvegarde des résultats
                     st.session_state.scenario1_result = sim_result
+                    # Expose a rollout-compatible dict so validation tab can pick it up
+                    et0_arr = sim_result.get("ET0")
+                    if et0_arr is None:
+                        et0_arr = sim_result.get("et0")
+                    st.session_state.scenario1_rollout = {
+                        "R": sim_result.get("rain"),
+                        "et0": et0_arr,
+                        "ETc": sim_result.get("ETc"),
+                        "psi": sim_result.get("psi"),
+                        "S": sim_result.get("S"),
+                        "fluxes": {"runoff": sim_result.get("D")},
+                        # provide a bucket soil moisture proxy
+                        "soil_moisture_layers": {"bucket_total_mm": sim_result.get("S")},
+                    }
                     st.success("✅ Simulation terminée !" if language == "fr" else "✅ Simulation complete!")
                 except Exception as e:
                     st.error(f"❌ Erreur lors de la simulation: {str(e)}" if language == "fr" else f"❌ Error during simulation: {str(e)}")
@@ -786,6 +828,8 @@ que celui où les bibliothèques sont installées.
                         season_length = st.session_state.get("season_length", 120)
                         max_irrigation = st.session_state.get("max_irrigation", 20.0)
                         seed = st.session_state.get("seed", 123)
+                        data_source, data_path, era5_land_cfg = _get_weather_source_cfg()
+                        
                         # Création de l'environnement vectorisé
                         base_env_factory = make_env(
                             seed=seed,
@@ -794,10 +838,14 @@ que celui où les bibliothèques sont installées.
                             soil_params=soil_params,
                             weather_params=weather_params,
                             weather_shift_cfg=st.session_state.get("proposal_a_config"),
+                            data_source=data_source,
+                            data_path=data_path,
+                            era5_land_cfg=era5_land_cfg,
                         )
 
                         def _init_env():
-                            return base_env_factory()
+                            env = base_env_factory()
+                            return env
 
                         vec_env = DummyVecEnv([_init_env])
                         
@@ -845,8 +893,6 @@ que celui où les bibliothèques sont installées.
                                 def __init__(self):
                                     super().__init__()
                                     self.metrics_history = []
-                                    self.ep_rewards = []
-                                    self.ep_lengths = []
                                 
                                 def _on_step(self) -> bool:
                                     # Collecter les métriques à chaque log
@@ -858,35 +904,16 @@ que celui où les bibliothèques sont installées.
                                                     metrics[key] = value
                                         if metrics:
                                             self.metrics_history.append(metrics)
-                                    # Capturer les épisodes terminés via Monitor
-                                    infos = self.locals.get("infos") if hasattr(self, "locals") else None
-                                    dones = self.locals.get("dones") if hasattr(self, "locals") else None
-                                    if infos is not None and dones is not None:
-                                        for info, done in zip(infos, dones):
-                                            if not done or not isinstance(info, dict):
-                                                continue
-                                            episode = info.get("episode")
-                                            if isinstance(episode, dict):
-                                                r = episode.get("r")
-                                                l = episode.get("l")
-                                                if isinstance(r, (int, float)) and isinstance(l, (int, float)):
-                                                    self.ep_rewards.append(float(r))
-                                                    self.ep_lengths.append(float(l))
                                     return True
                                 
                                 def get_final_metrics(self):
-                                    """Retourne les dernières valeurs disponibles pour chaque métrique."""
+                                    """Retourne les métriques finales (dernières valeurs enregistrées)"""
                                     if not self.metrics_history:
                                         return {}
-                                    merged = {}
-                                    for metrics in self.metrics_history:
+                                    for metrics in reversed(self.metrics_history):
                                         if metrics:
-                                            merged.update(metrics)
-                                    if self.ep_rewards:
-                                        merged.setdefault("rollout/ep_rew_mean", sum(self.ep_rewards) / len(self.ep_rewards))
-                                    if self.ep_lengths:
-                                        merged.setdefault("rollout/ep_len_mean", sum(self.ep_lengths) / len(self.ep_lengths))
-                                    return merged
+                                            return metrics
+                                    return {}
                             
                             metrics_callback = MetricsCallback()
                             callbacks_list.append(metrics_callback)
@@ -1044,23 +1071,23 @@ que celui où les bibliothèques sont installées.
                         if training_metrics:
                             col1, col2, col3 = st.columns(3)
                             with col1:
-                                ep_rew = _get_metric(training_metrics, ["rollout/ep_rew_mean", "train/ep_rew_mean", "ep_rew_mean"])
+                                ep_rew = training_metrics.get("rollout/ep_rew_mean", "N/A")
                                 if isinstance(ep_rew, (int, float)):
                                     st.metric(metric_labels["reward"], f"{ep_rew:.2f}")
                                 else:
-                                    st.metric(metric_labels["reward"], ep_rew or "N/A")
+                                    st.metric(metric_labels["reward"], ep_rew)
                             with col2:
-                                ep_len = _get_metric(training_metrics, ["rollout/ep_len_mean", "train/ep_len_mean", "ep_len_mean"])
+                                ep_len = training_metrics.get("rollout/ep_len_mean", "N/A")
                                 if isinstance(ep_len, (int, float)):
                                     st.metric(metric_labels["ep_len"], f"{ep_len:.1f}")
                                 else:
-                                    st.metric(metric_labels["ep_len"], ep_len or "N/A")
+                                    st.metric(metric_labels["ep_len"], ep_len)
                             with col3:
-                                policy_loss = _get_metric(training_metrics, ["train/policy_loss", "train/policy_gradient_loss"])
+                                policy_loss = training_metrics.get("train/policy_loss", "N/A")
                                 if isinstance(policy_loss, (int, float)):
                                     st.metric(metric_labels["policy_loss"], f"{policy_loss:.4f}")
                                 else:
-                                    st.metric(metric_labels["policy_loss"], policy_loss or "N/A")
+                                    st.metric(metric_labels["policy_loss"], policy_loss)
                             
                             # Métriques supplémentaires dans un expander
                             with st.expander(metric_labels["detailed"]):
@@ -1376,7 +1403,22 @@ Note: Assurez-vous d'utiliser le même environnement Python que Streamlit.
                             # Callback personnalisé pour suivre la progression
                             import time
                             start_time = time.time()
-                            
+                            data_source, data_path, era5_land_cfg = _get_weather_source_cfg()
+                            external_weather = None
+                            effective_season_length = st.session_state.get("season_length", 120)
+                            if data_source == "era5_land" and data_path:
+                                try:
+                                    external_weather = load_data_for_simulation(
+                                        data_source="era5_land",
+                                        file_path=data_path,
+                                        resample_freq=era5_land_cfg.get("resample_freq", "1D") if era5_land_cfg else "1D",
+                                    )
+                                    if external_weather and "rain" in external_weather:
+                                        effective_season_length = len(np.asarray(external_weather["rain"]))
+                                except Exception as exc:
+                                    st.error(f"❌ Chargement ERA5-Land impossible : {exc}")
+                                    raise
+
                             def ppo_progress_callback(current, total):
                                 progress = min(1.0, max(0.0, current / total))  # Clipper entre 0.0 et 1.0
                                 progress_bar.progress(progress)
@@ -1430,13 +1472,14 @@ Note: Assurez-vous d'utiliser le même environnement Python que Streamlit.
                             # Entraîner PPO
                             ppo_model, training_metrics = train_ppo_hybrid_ode(
                                 residual_ode_model=st.session_state.scenario3_residual_model,
-                                season_length=st.session_state.get("season_length", 120),
+                                season_length=effective_season_length,
                                 max_irrigation=st.session_state.get("max_irrigation", 20.0),
                                 total_timesteps=ppo_timesteps,
                                 seed=st.session_state.get("seed", 123),
                                 soil_params=st.session_state.get("soil_params"),
                                 weather_params=st.session_state.get("weather_params"),
                                 weather_shift_cfg=st.session_state.get("proposal_a_config"),
+                                external_weather=external_weather,
                                 ppo_kwargs={
                                     "learning_rate": ppo_lr,
                                     "gamma": ppo_gamma,
@@ -1485,23 +1528,23 @@ Note: Assurez-vous d'utiliser le même environnement Python que Streamlit.
                             if training_metrics:
                                 col1, col2, col3 = st.columns(3)
                                 with col1:
-                                    ep_rew = _get_metric(training_metrics, ["rollout/ep_rew_mean", "train/ep_rew_mean", "ep_rew_mean"])
+                                    ep_rew = training_metrics.get("rollout/ep_rew_mean", "N/A")
                                     if isinstance(ep_rew, (int, float)):
                                         st.metric(metric_labels["reward"], f"{ep_rew:.2f}")
                                     else:
-                                        st.metric(metric_labels["reward"], ep_rew or "N/A")
+                                        st.metric(metric_labels["reward"], ep_rew)
                                 with col2:
-                                    ep_len = _get_metric(training_metrics, ["rollout/ep_len_mean", "train/ep_len_mean", "ep_len_mean"])
+                                    ep_len = training_metrics.get("rollout/ep_len_mean", "N/A")
                                     if isinstance(ep_len, (int, float)):
                                         st.metric(metric_labels["ep_len"], f"{ep_len:.1f}")
                                     else:
-                                        st.metric(metric_labels["ep_len"], ep_len or "N/A")
+                                        st.metric(metric_labels["ep_len"], ep_len)
                                 with col3:
-                                    policy_loss = _get_metric(training_metrics, ["train/policy_loss", "train/policy_gradient_loss"])
+                                    policy_loss = training_metrics.get("train/policy_loss", "N/A")
                                     if isinstance(policy_loss, (int, float)):
                                         st.metric(metric_labels["policy_loss"], f"{policy_loss:.4f}")
                                     else:
-                                        st.metric(metric_labels["policy_loss"], policy_loss or "N/A")
+                                        st.metric(metric_labels["policy_loss"], policy_loss)
                                 
                                 # Métriques supplémentaires dans un expander
                                 with st.expander(metric_labels["detailed"]):
@@ -1786,6 +1829,23 @@ Note: Assurez-vous d'utiliser le même environnement Python que Streamlit.
                 if st.button(start_label, type="primary", key="train_ode_cont_btn"):
                     with st.spinner("Entraînement PPO en cours..." if language == "fr" else "PPO training in progress..."):
                         try:
+                            # Charger ERA5-Land si sélectionné
+                            data_source, data_path, era5_land_cfg = _get_weather_source_cfg()
+                            external_weather = None
+                            effective_season_length = st.session_state.get("season_length", 120)
+                            if data_source == "era5_land" and data_path:
+                                try:
+                                    external_weather = load_data_for_simulation(
+                                        data_source="era5_land",
+                                        file_path=data_path,
+                                        resample_freq=era5_land_cfg.get("resample_freq", "1D") if era5_land_cfg else "1D",
+                                    )
+                                    if external_weather and "rain" in external_weather:
+                                        effective_season_length = len(np.asarray(external_weather["rain"]))
+                                except Exception as exc:
+                                    st.warning(f"⚠️ Impossible de charger ERA5-Land, utilisation météo synthétique : {exc}")
+                                    external_weather = None
+
                             import time
                             progress_bar = st.progress(0)
                             status_container = st.container()
@@ -1854,12 +1914,13 @@ Note: Assurez-vous d'utiliser le même environnement Python que Streamlit.
 
                             ppo_model, training_metrics = train_ppo_hybrid_ode_cont(
                                 residual_ode_model=st.session_state.scenario3b_residual_model,
-                                season_length=st.session_state.get("season_length", 120),
+                                season_length=effective_season_length,
                                 max_irrigation=st.session_state.get("max_irrigation", 20.0),
                                 total_timesteps=ppo_timesteps,
                                 seed=st.session_state.get("seed", 123),
                                 soil_params=st.session_state.get("soil_params"),
                                 weather_params=st.session_state.get("weather_params"),
+                                external_weather=external_weather,
                                 ppo_kwargs=ppo_config,
                                 weather_shift_cfg=st.session_state.get("proposal_a_config"),
                                 progress_callback=progress_callback
@@ -1906,472 +1967,7 @@ Note: Assurez-vous d'utiliser le même environnement Python que Streamlit.
                 st.info("✅ Modèle disponible pour l'évaluation dans l'onglet 'Évaluation'." if language == "fr" else "✅ Model ready for evaluation in the 'Evaluation' tab.")
 
     # ========================================================================
-    # ONGLET 4 : SCÉNARIO 4 - NEURAL CDE
-    # ========================================================================
-    with tab4:
-        language = st.session_state.get("ui_language", "fr")
-
-        t4 = {
-            "fr": {
-                "header": "🌀 Scénario 4 — RL sur modèle hybride Physique + Neural CDE",
-                "desc": "Le **Scénario 4** combine un modèle physique (bucket) avec une correction neuronale apprise (Neural CDE). Le Neural CDE utilise une séquence d'états passés pour capturer des dépendances temporelles plus longues.",
-                "pretrain_title": "### 🛠️ Étape 1 : Pré-entraîner le modèle Neural CDE",
-                "principle": """
-        <div style="background-color: #e7f3ff; padding: 0.8rem; border-radius: 0.5rem; margin-bottom: 1rem; font-size: 0.9rem;">
-            <strong>PRINCIPE :</strong> Le modèle Neural CDE apprend une correction Δψ à partir de séquences d'états passés.
-            Cette correction capture des dépendances temporelles plus longues que le Neural ODE.
-        </div>
-        """,
-                "n_traj": "Nombre de trajectoires",
-                "n_traj_help": "Nombre de trajectoires simulées pour générer les données d'entraînement",
-                "n_epochs": "Nombre d'epochs",
-                "n_epochs_help": "Nombre d'epochs d'entraînement du Neural CDE",
-                "lr": "Taux d'apprentissage",
-                "lr_help": "Taux d'apprentissage pour l'optimiseur",
-                "batch": "Taille des batches",
-                "batch_help": "Taille des batches pour l'entraînement",
-                "seq_len": "Longueur de séquence",
-                "seq_len_help": "Nombre de pas de temps dans la séquence pour le CDE",
-                "pretrain_btn": "🔧 Pré-entraîner le Neural CDE",
-                "pretrain_done": "✅ Pré-entraînement terminé !",
-                "pretrain_ready": "✅ Modèle Neural CDE pré-entraîné et prêt pour l'entraînement PPO",
-                "pretrain_ready_score": "✅ Modèle Neural CDE pré-entraîné et prêt pour l'entraînement PPO\n📊 Score final (Loss): {score:.6f}",
-                "pretrain_warn": "⚠️ Vous devez d'abord pré-entraîner le modèle Neural CDE (Étape 1)",
-                "ppo_title": "### 🚀 Étape 2 : Entraînement PPO sur modèle hybride",
-                "ppo_principle": """
-                <div style="background-color: #fff3cd; padding: 0.8rem; border-radius: 0.5rem; margin-bottom: 1rem; font-size: 0.9rem;">
-                    <strong>PRINCIPE :</strong> L'agent PPO apprend une politique optimale sur l'environnement
-                    hybride (physique + Neural CDE), combinant structure physique et flexibilité neuronale.
-                </div>
-                """,
-                "ppo_steps": "Nombre total de pas d'entraînement",
-                "ppo_help": "Nombre total de pas de simulation pour l'entraînement",
-                "ppo_policy": "Type de politique",
-                "ppo_policy_help": "Politique PPO (MLP par défaut)",
-                "ppo_adv": "Hyperparamètres PPO avancés",
-                "ppo_lr_label": "Learning rate",
-                "ppo_gamma_label": "Gamma (discount factor)",
-                "start_btn": "🚀 Démarrer l'entraînement PPO (Scénario 4)",
-                "progress_title": "### 📊 Progression de l'entraînement",
-                "success_status": "✅ Le modèle PPO hybride (Neural CDE) est prêt. Vous pouvez l'évaluer dans l'onglet 'Évaluation'.",
-                "no_model": "✅ Modèle PPO hybride (Neural CDE) entraîné et disponible pour l'évaluation",
-            },
-            "en": {
-                "header": "🌀 Scenario 4 — RL on hybrid Physical + Neural CDE model",
-                "desc": "Scenario 4 combines a physical bucket model with a learned neural correction (Neural CDE). The Neural CDE uses a sequence of past states to capture longer temporal dependencies.",
-                "pretrain_title": "### 🛠️ Step 1: Pre-train the Neural CDE model",
-                "principle": """
-        <div style="background-color: #e7f3ff; padding: 0.8rem; border-radius: 0.5rem; margin-bottom: 1rem; font-size: 0.9rem;">
-            <strong>PRINCIPLE:</strong> The Neural CDE learns a Δψ correction from sequences of past states.
-            This correction captures longer temporal dependencies than the Neural ODE.
-        </div>
-        """,
-                "n_traj": "Number of trajectories",
-                "n_traj_help": "Number of simulated trajectories to generate training data",
-                "n_epochs": "Number of epochs",
-                "n_epochs_help": "Training epochs for the Neural CDE",
-                "lr": "Learning rate",
-                "lr_help": "Learning rate for the optimizer",
-                "batch": "Batch size",
-                "batch_help": "Batch size for training",
-                "seq_len": "Sequence length",
-                "seq_len_help": "Sequence length for the CDE",
-                "pretrain_btn": "🔧 Pre-train Neural CDE",
-                "pretrain_done": "✅ Pre-training complete!",
-                "pretrain_ready": "✅ Neural CDE pre-trained and ready for PPO training",
-                "pretrain_ready_score": "✅ Neural CDE pre-trained and ready for PPO training\n📊 Final loss: {score:.6f}",
-                "pretrain_warn": "⚠️ Please pre-train the Neural CDE first (Step 1)",
-                "ppo_title": "### 🚀 Step 2: PPO training on hybrid model",
-                "ppo_principle": """
-                <div style="background-color: #fff3cd; padding: 0.8rem; border-radius: 0.5rem; margin-bottom: 1rem; font-size: 0.9rem;">
-                    <strong>PRINCIPLE:</strong> The PPO agent learns an optimal irrigation policy on the
-                    hybrid (physical + Neural CDE) environment, combining physical structure with neural flexibility.
-                </div>
-                """,
-                "ppo_steps": "Total training steps",
-                "ppo_help": "Total simulation steps for training",
-                "ppo_policy": "Policy type",
-                "ppo_policy_help": "PPO policy (MLP by default)",
-                "ppo_adv": "Advanced PPO hyperparameters",
-                "ppo_lr_label": "Learning rate",
-                "ppo_gamma_label": "Gamma (discount factor)",
-                "start_btn": "🚀 Start PPO training (Scenario 4)",
-                "progress_title": "### 📊 Training progress",
-                "success_status": "✅ The PPO hybrid model (Neural CDE) is ready. You can evaluate it in the 'Evaluation' tab.",
-                "no_model": "✅ PPO hybrid model (Neural CDE) trained and available for evaluation",
-            },
-        }[language]
-
-        st.markdown(f'<h2 class="section-header">{t4["header"]}</h2>', unsafe_allow_html=True)
-        
-        st.markdown(t4["desc"])
-        
-        if TORCH_AVAILABLE and PPO_AVAILABLE:
-            # Initialisation de l'état de session pour le scénario 4
-            if "scenario4_residual_model" not in st.session_state:
-                st.session_state.scenario4_residual_model = None
-            if "scenario4_ppo_model" not in st.session_state:
-                st.session_state.scenario4_ppo_model = None
-            if "scenario4_pretrain_complete" not in st.session_state:
-                st.session_state.scenario4_pretrain_complete = False
-            
-            # ====================================================================
-            # ÉTAPE 1 : PRÉ-ENTRAÎNEMENT DU NEURAL CDE
-            # ====================================================================
-            st.markdown(t4["pretrain_title"])
-            st.markdown(t4["principle"], unsafe_allow_html=True)
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                pretrain_n_traj_cde = st.number_input(
-                    t4["n_traj"],
-                    min_value=10,
-                    max_value=100,
-                    value=32,
-                    step=5,
-                    key="cde_n_traj",
-                    help=t4["n_traj_help"]
-                )
-            with col2:
-                pretrain_n_epochs_cde = st.number_input(
-                    t4["n_epochs"],
-                    min_value=5,
-                    max_value=50,
-                    value=10,
-                    step=5,
-                    key="cde_n_epochs",
-                    help=t4["n_epochs_help"]
-                )
-            with col3:
-                pretrain_lr_cde = st.number_input(
-                    t4["lr"],
-                    min_value=1e-5,
-                    max_value=1e-2,
-                    value=1e-3,
-                    step=1e-4,
-                    format="%.4f",
-                    key="cde_lr",
-                    help=t4["lr_help"]
-                )
-            
-            col4, col5 = st.columns(2)
-            with col4:
-                pretrain_batch_size_cde = st.number_input(
-                    t4["batch"],
-                    min_value=32,
-                    max_value=512,
-                    value=256,
-                    step=32,
-                    key="cde_batch_size",
-                    help=t4["batch_help"]
-                )
-            with col5:
-                seq_len_cde = st.number_input(
-                    t4["seq_len"],
-                    min_value=3,
-                    max_value=10,
-                    value=5,
-                    step=1,
-                    key="cde_seq_len",
-                    help=t4["seq_len_help"]
-                )
-            
-            if st.button(t4["pretrain_btn"], key="pretrain_cde_btn"):
-                with st.spinner("Pré-entraînement en cours..." if language == "fr" else "Pre-training in progress..."):
-                    try:
-                        # Récupérer les paramètres du sol depuis la session
-                        soil_params = st.session_state.get("soil_params", {})
-                        soil = PhysicalBucket(**soil_params) if soil_params else PhysicalBucket()
-                        
-                        # Récupérer les autres paramètres depuis session_state
-                        season_length = st.session_state.get("season_length", 120)
-                        max_irrigation = st.session_state.get("max_irrigation", 20.0)
-                        seed = st.session_state.get("seed", 123)
-                        
-                        # Callback de progression
-                        progress_bar = st.progress(0)
-                        status_text = st.empty()
-                        
-                        def progress_callback(epoch, total_epochs, loss):
-                            progress = min(1.0, max(0.0, epoch / total_epochs))  # Clipper entre 0.0 et 1.0
-                            progress_bar.progress(progress)
-                            status_text.text(f"Epoch {epoch}/{total_epochs} - Loss: {loss:.6f}")
-                        
-                        # Pré-entraîner
-                        residual_model, pretrain_score = pretrain_residual_cde(
-                            soil=soil,
-                            max_irrigation=max_irrigation,
-                            T=season_length,
-                            N_traj=pretrain_n_traj_cde,
-                            seq_len=seq_len_cde,
-                            n_epochs=pretrain_n_epochs_cde,
-                            batch_size=pretrain_batch_size_cde,
-                            lr=pretrain_lr_cde,
-                            seed=seed,
-                            device="cpu",
-                            progress_callback=progress_callback
-                        )
-                        
-                        st.session_state.scenario4_residual_model = residual_model
-                        st.session_state.scenario4_pretrain_complete = True
-                        st.session_state.scenario4_pretrain_score = pretrain_score
-                        
-                        progress_bar.progress(1.0)
-                        status_text.empty()
-                        st.success(t4["pretrain_done"])
-                        
-                    except Exception as e:
-                        st.error(f"❌ Erreur lors du pré-entraînement : {str(e)}")
-                        import traceback
-                        st.code(traceback.format_exc())
-            
-            # Afficher le statut du pré-entraînement
-            if st.session_state.scenario4_pretrain_complete:
-                pretrain_score = st.session_state.get("scenario4_pretrain_score", None)
-                if pretrain_score is not None:
-                    st.info(t4["pretrain_ready_score"].format(score=pretrain_score))
-                else:
-                    st.info(t4["pretrain_ready"])
-            
-            # ====================================================================
-            # ÉTAPE 2 : ENTRAÎNEMENT PPO SUR MODÈLE HYBRIDE
-            # ====================================================================
-            st.markdown(t4["ppo_title"])
-            st.markdown(t4["ppo_principle"], unsafe_allow_html=True)
-            
-            if not st.session_state.scenario4_pretrain_complete:
-                st.warning(t4["pretrain_warn"])
-            else:
-                col1, col2 = st.columns(2)
-                with col1:
-                    total_timesteps_cde = st.number_input(
-                        t4["ppo_steps"],
-                        min_value=10000,
-                        max_value=500000,
-                        value=50000,
-                        step=10000,
-                        key="cde_timesteps",
-                        help=t4["ppo_help"]
-                    )
-                with col2:
-                    ppo_policy_type_cde = st.selectbox(
-                        t4["ppo_policy"],
-                        options=["MlpPolicy"],
-                        index=0,
-                        key="cde_policy_type",
-                        help=t4["ppo_policy_help"]
-                    )
-                
-                # Configuration MLP de la politique
-                policy_kwargs_cde = render_mlp_policy_config(ppo_policy_type_cde, language, key_prefix="scenario4")
-                
-                # Hyperparamètres PPO (lr, gamma)
-                with st.expander(t4["ppo_adv"], expanded=False):
-                    ppo_lr_cde = st.number_input(
-                        t4["ppo_lr_label"],
-                        min_value=1e-5,
-                        max_value=1e-2,
-                        value=3e-4,
-                        step=1e-5,
-                        format="%.5f",
-                        key="scenario4_ppo_lr"
-                    )
-                    ppo_gamma_cde = st.number_input(
-                        t4["ppo_gamma_label"],
-                        min_value=0.9,
-                        max_value=0.999,
-                        value=0.99,
-                        step=0.01,
-                        key="scenario4_ppo_gamma"
-                    )
-                
-                start_label = {
-                    "fr": "🚀 Démarrer l'entraînement PPO (Scénario 4)",
-                    "en": "🚀 Start PPO training (Scenario 4)",
-                }[language]
-                if st.button(start_label, type="primary", key="train_cde_btn"):
-                    with st.spinner("Entraînement en cours..." if language == "fr" else "Training in progress..."):
-                        try:
-                            # Récupérer les paramètres depuis session_state
-                            soil_params = st.session_state.get("soil_params", {})
-                            season_length = st.session_state.get("season_length", 120)
-                            max_irrigation = st.session_state.get("max_irrigation", 20.0)
-                            seed = st.session_state.get("seed", 123)
-                            
-                            # Section de progression agrandie
-                            progress_title = {
-                                "fr": "### 📊 Progression de l'entraînement",
-                                "en": "### 📊 Training progress",
-                            }[language]
-                            st.markdown(progress_title)
-                            
-                            # Barre de progression agrandie
-                            progress_bar = st.progress(0)
-                            
-                            # Zone de statut agrandie
-                            status_container = st.container()
-                            with status_container:
-                                col1, col2, col3 = st.columns([2, 1, 1])
-                                with col1:
-                                    status_text = st.empty()
-                                with col2:
-                                    time_elapsed = st.empty()
-                                with col3:
-                                    eta_text = st.empty()
-                            
-                            # Callback personnalisé pour suivre la progression
-                            import time
-                            start_time = time.time()
-
-                            def progress_callback(current, total):
-                                progress = min(1.0, max(0.0, current / total))  # Clipper entre 0.0 et 1.0
-                                progress_bar.progress(progress)
-                                
-                                # Calcul du temps écoulé et estimé
-                                current_time = time.time()
-                                elapsed = current_time - start_time
-                                
-                                if progress > 0:
-                                    # Estimation du temps total basée sur la progression actuelle
-                                    estimated_total = elapsed / progress
-                                    remaining = estimated_total - elapsed
-                                    
-                                    # Mise à jour du texte de statut avec formatage bilingue
-                                    progress_label = "Progression" if language == "fr" else "Progress"
-                                    steps_label = "pas" if language == "fr" else "steps"
-                                    status_text.markdown(
-                                        f"<div class='progress-status'>"
-                                        f"<strong>{progress_label}:</strong> {current:,} / {total:,} {steps_label} "
-                                        f"<strong>({progress*100:.1f}%)</strong>"
-                                        f"</div>",
-                                        unsafe_allow_html=True
-                                    )
-                                    
-                                    # Formatage du temps écoulé (heures:minutes:secondes)
-                                    hours = int(elapsed // 3600)
-                                    minutes = int((elapsed % 3600) // 60)
-                                    seconds = int(elapsed % 60)
-                                    if hours > 0:
-                                        time_str = f"{hours}h {minutes}m {seconds}s"
-                                    elif minutes > 0:
-                                        time_str = f"{minutes}m {seconds}s"
-                                    else:
-                                        time_str = f"{seconds}s"
-                                    
-                                    elapsed_label = "⏱️ Temps écoulé" if language == "fr" else "⏱️ Elapsed time"
-                                    time_elapsed.metric(elapsed_label, time_str)
-                                    
-                                    # Formatage du temps restant estimé (ETA)
-                                    if remaining > 0:
-                                        hours = int(remaining // 3600)
-                                        minutes = int((remaining % 3600) // 60)
-                                        seconds = int(remaining % 60)
-                                        if hours > 0:
-                                            eta_str = f"{hours}h {minutes}m {seconds}s"
-                                        elif minutes > 0:
-                                            eta_str = f"{minutes}m {seconds}s"
-                                        else:
-                                            eta_str = f"{seconds}s"
-                                        eta_label = "⏳ Temps restant" if language == "fr" else "⏳ Time remaining"
-                                        eta_text.metric(eta_label, eta_str)
-                            
-                            # Entraîner PPO
-                            ppo_model, training_metrics = train_ppo_hybrid_cde(
-                                residual_cde_model=st.session_state.scenario4_residual_model,
-                                season_length=season_length,
-                                max_irrigation=max_irrigation,
-                                seq_len_cde=seq_len_cde,
-                                total_timesteps=total_timesteps_cde,
-                                seed=seed,
-                                soil_params=soil_params,
-                                weather_params=st.session_state.get("weather_params"),
-                                ppo_kwargs={
-                                    "policy": ppo_policy_type_cde,
-                                    "learning_rate": ppo_lr_cde,
-                                    "gamma": ppo_gamma_cde,
-                                    **({"policy_kwargs": policy_kwargs_cde} if policy_kwargs_cde else {}),
-                                },
-                                weather_shift_cfg=st.session_state.get("proposal_a_config"),
-                                progress_callback=progress_callback
-                            )
-                            
-                            st.session_state.scenario4_ppo_model = ppo_model
-                            st.session_state.scenario4_training_metrics = training_metrics
-                            
-                            progress_bar.progress(1.0)
-                            status_done = {
-                                "fr": f"<div class='progress-status'><strong>✅ Entraînement terminé:</strong> {total_timesteps_cde:,} pas</div>",
-                                "en": f"<div class='progress-status'><strong>✅ Training finished:</strong> {total_timesteps_cde:,} steps</div>",
-                            }[language]
-                            status_text.markdown(status_done, unsafe_allow_html=True)
-                            
-                            # Message de succès avec temps d'entraînement
-                            final_time = time.time() - start_time
-                            hours = int(final_time // 3600)
-                            minutes = int((final_time % 3600) // 60)
-                            seconds = int(final_time % 60)
-                            if hours > 0:
-                                final_time_str = f"{hours}h {minutes}m {seconds}s"
-                            elif minutes > 0:
-                                final_time_str = f"{minutes}m {seconds}s"
-                            else:
-                                final_time_str = f"{seconds}s"
-                            
-                            st.success("✅ Entraînement terminé en {time} ! Modèle sauvegardé.".format(time=final_time_str) if language == "fr" else "✅ Training finished in {time}! Model saved.".format(time=final_time_str))
-                            
-                            # Afficher les métriques d'entraînement
-                            metrics_title = {"fr": "### 📊 Métriques d'entraînement", "en": "### 📊 Training metrics"}[language]
-                            metric_labels = {
-                                "reward": "Récompense moyenne" if language == "fr" else "Average reward",
-                                "ep_len": "Longueur moyenne épisode" if language == "fr" else "Average episode length",
-                                "policy_loss": "Perte de politique" if language == "fr" else "Policy loss",
-                                "detailed": "📈 Métriques détaillées" if language == "fr" else "📈 Detailed metrics",
-                                "no_metrics": "⚠️ Aucune métrique disponible" if language == "fr" else "⚠️ No metrics available",
-                            }
-                            st.markdown(metrics_title)
-                            if training_metrics:
-                                col1, col2, col3 = st.columns(3)
-                                with col1:
-                                    ep_rew = _get_metric(training_metrics, ["rollout/ep_rew_mean", "train/ep_rew_mean", "ep_rew_mean"])
-                                    st.metric(metric_labels["reward"], f"{ep_rew:.2f}" if isinstance(ep_rew, (int, float)) else (ep_rew or "N/A"))
-                                with col2:
-                                    ep_len = _get_metric(training_metrics, ["rollout/ep_len_mean", "train/ep_len_mean", "ep_len_mean"])
-                                    st.metric(metric_labels["ep_len"], f"{ep_len:.1f}" if isinstance(ep_len, (int, float)) else (ep_len or "N/A"))
-                                with col3:
-                                    policy_loss = _get_metric(training_metrics, ["train/policy_loss", "train/policy_gradient_loss"])
-                                    st.metric(metric_labels["policy_loss"], f"{policy_loss:.4f}" if isinstance(policy_loss, (int, float)) else (policy_loss or "N/A"))
-                                
-                                # Métriques supplémentaires dans un expander
-                                with st.expander(metric_labels["detailed"]):
-                                    metrics_text = ""
-                                    for key, value in sorted(training_metrics.items()):
-                                        if isinstance(value, (int, float)):
-                                            metrics_text += f"- **{key}**: {value:.6f}\n"
-                                        else:
-                                            metrics_text += f"- **{key}**: {value}\n"
-                                    st.markdown(metrics_text)
-                            else:
-                                st.info(metric_labels["no_metrics"])
-                            
-                            st.info({
-                                "fr": "✅ Le modèle PPO hybride (Neural CDE) est prêt. Vous pouvez l'évaluer dans l'onglet 'Évaluation'.",
-                                "en": "✅ The PPO hybrid model (Neural CDE) is ready. You can evaluate it in the 'Evaluation' tab.",
-                            }[language])
-                            
-                        except Exception as e:
-                            st.error(f"❌ Erreur lors de l'entraînement PPO : {str(e)}")
-                            import traceback
-                            st.code(traceback.format_exc())
-                
-                # Afficher le statut
-                if st.session_state.scenario4_ppo_model is not None:
-                    st.info("✅ Modèle PPO hybride (Neural CDE) entraîné et disponible pour l'évaluation")
-        
-        else:
-            st.error("❌ PyTorch ou stable-baselines3 n'est pas installé. Installez-les pour utiliser le Scénario 4.")
-    
-    # ========================================================================
-    # ONGLET 5 : SCÉNARIO 5 - PATCHTST
+    # ONGLET 7 : ÉVALUATION
     # ========================================================================
     with tab5:
         # Sélecteur de langue (synchronisé)
@@ -2390,7 +1986,6 @@ Note: Assurez-vous d'utiliser le même environnement Python que Streamlit.
                     "scenario2": "⚠️ Aucun modèle du scénario 2 entraîné. Veuillez d'abord entraîner un modèle dans l'onglet 'Scénario 2 (Entraînement PPO)'.",
                     "scenario3": "⚠️ Aucun modèle du scénario 3 entraîné. Veuillez d'abord entraîner un modèle dans l'onglet 'Scénario 3 (Neural ODE)'.",
                     "scenario3b": "⚠️ Aucun modèle du scénario 3b entraîné. Veuillez d'abord entraîner un modèle dans l'onglet 'Scénario 3b (Neural ODE continu)'.",
-                    "scenario4": "⚠️ Aucun modèle du scénario 4 entraîné. Veuillez d'abord entraîner un modèle dans l'onglet 'Scénario 4 (Neural CDE)'.",
                 },
                 "eval_running": "Évaluation en cours...",
                 "eval_done": "✅ Évaluation terminée !",
@@ -2407,7 +2002,6 @@ Note: Assurez-vous d'utiliser le même environnement Python que Streamlit.
                     "scenario2": "⚠️ No Scenario 2 model trained. Please train one in the 'Scenario 2 (PPO Training)' tab first.",
                     "scenario3": "⚠️ No Scenario 3 model trained. Please train one in the 'Scenario 3 (Neural ODE)' tab first.",
                     "scenario3b": "⚠️ No Scenario 3b model trained. Please train one in the 'Scenario 3b (Continuous Neural ODE)' tab first.",
-                    "scenario4": "⚠️ No Scenario 4 model trained. Please train one in the 'Scenario 4 (Neural CDE)' tab first.",
                 },
                 "eval_running": "Evaluation in progress...",
                 "eval_done": "✅ Evaluation complete!",
@@ -2421,7 +2015,6 @@ Note: Assurez-vous d'utiliser le même environnement Python que Streamlit.
             "scenario2": {"fr": "Scénario 2 (PPO physique)", "en": "Scenario 2 (PPO physical)"},
             "scenario3": {"fr": "Scénario 3 (PPO hybride Neural ODE)", "en": "Scenario 3 (PPO hybrid Neural ODE)"},
             "scenario3b": {"fr": "Scénario 3b (Neural ODE continu)", "en": "Scenario 3b (Continuous Neural ODE)"},
-            "scenario4": {"fr": "Scénario 4 (PPO hybride Neural CDE)", "en": "Scenario 4 (PPO hybrid Neural CDE)"},
         }
         
         # Sélection du modèle à évaluer (valeurs = clés internes, affichage traduit)
@@ -2437,10 +2030,7 @@ Note: Assurez-vous d'utiliser le même environnement Python que Streamlit.
         model = None
         use_residual = False
         use_residual_cont = False
-        use_residual_cde = False
         residual_model = None
-        residual_cde_model = None
-        seq_len_cde = 5
         
         if model_to_evaluate == "scenario2":
             if st.session_state.ppo_model is None:
@@ -2448,14 +2038,12 @@ Note: Assurez-vous d'utiliser le même environnement Python que Streamlit.
             else:
                 model = st.session_state.ppo_model
                 use_residual = False
-                use_residual_cde = False
         elif model_to_evaluate == "scenario3":
             if st.session_state.scenario3_ppo_model is None:
                 st.warning("⚠️ Aucun modèle du scénario 3 entraîné. Veuillez d'abord entraîner un modèle dans l'onglet 'Scénario 3 (Neural ODE)'.")
             else:
                 model = st.session_state.scenario3_ppo_model
                 use_residual = True
-                use_residual_cde = False
                 residual_model = st.session_state.scenario3_residual_model
         elif model_to_evaluate == "scenario3b":
             if st.session_state.scenario3b_ppo_model is None:
@@ -2464,22 +2052,11 @@ Note: Assurez-vous d'utiliser le même environnement Python que Streamlit.
                 model = st.session_state.scenario3b_ppo_model
                 use_residual = True
                 use_residual_cont = True
-                use_residual_cde = False
                 residual_model = st.session_state.scenario3b_residual_model
-        elif model_to_evaluate == "scenario4":
-            if st.session_state.scenario4_ppo_model is None:
-                st.warning("⚠️ Aucun modèle du scénario 4 entraîné. Veuillez d'abord entraîner un modèle dans l'onglet 'Scénario 4 (Neural CDE)'.")
-            else:
-                model = st.session_state.scenario4_ppo_model
-                use_residual = False
-                use_residual_cde = True
-                residual_cde_model = st.session_state.scenario4_residual_model
-                seq_len_cde = st.session_state.get("seq_len_cde", 5)
         
         if (model_to_evaluate == "scenario2" and st.session_state.ppo_model is not None) or \
            (model_to_evaluate == "scenario3" and st.session_state.scenario3_ppo_model is not None) or \
-           (model_to_evaluate == "scenario3b" and st.session_state.scenario3b_ppo_model is not None) or \
-           (model_to_evaluate == "scenario4" and st.session_state.scenario4_ppo_model is not None):
+           (model_to_evaluate == "scenario3b" and st.session_state.scenario3b_ppo_model is not None):
             # Section de configuration de la graine
             st.markdown(eval_text["seed_section"])
             
@@ -2504,8 +2081,10 @@ Note: Assurez-vous d'utiliser le même environnement Python que Streamlit.
                 if use_residual and residual_model is None:
                     st.error("❌ Modèle résiduel (Neural ODE) manquant." if language == "fr" else "❌ Residual model (Neural ODE) is missing.")
                     st.stop()
-                if use_residual_cde and residual_cde_model is None:
-                    st.error("❌ Modèle résiduel Neural CDE manquant." if language == "fr" else "❌ Residual Neural CDE model is missing.")
+                    st.stop()
+                    st.stop()
+                    st.stop()
+                    st.stop()
                     st.stop()
 
                 with st.spinner(eval_text["eval_running"]):
@@ -2519,21 +2098,29 @@ Note: Assurez-vous d'utiliser le même environnement Python que Streamlit.
                             "soil_params": st.session_state.get("soil_params"),
                             "weather_params": st.session_state.get("weather_params")
                         }
+                        data_source, data_path, era5_land_cfg = _get_weather_source_cfg()
+                        eval_kwargs["data_source"] = data_source
+                        eval_kwargs["data_path"] = data_path
+                        eval_kwargs["era5_land_cfg"] = era5_land_cfg
+                        if data_source == "era5_land" and data_path:
+                            try:
+                                weather_bundle = load_data_for_simulation(
+                                    data_source="era5_land",
+                                    file_path=data_path,
+                                    resample_freq=era5_land_cfg.get("resample_freq", "1D") if era5_land_cfg else "1D",
+                                )
+                                if weather_bundle and "rain" in weather_bundle:
+                                    eval_kwargs["season_length"] = len(np.asarray(weather_bundle["rain"]))
+                            except Exception as exc:
+                                st.warning(f"⚠️ Impossible de charger ERA5-Land pour l'évaluation : {exc}")
                         
-                        # Ajouter le modèle résiduel selon le scénario
                         if use_residual and residual_model is not None:
                             eval_kwargs["residual_ode"] = residual_model
-                        elif use_residual_cde and residual_cde_model is not None:
-                            eval_kwargs["residual_cde"] = residual_cde_model
-                            eval_kwargs["seq_len_cde"] = seq_len_cde
-                        
                         rollout = evaluate_episode(**eval_kwargs)
                         
                         # Ajouter un identifiant du scénario au rollout
                         if use_residual:
                             scenario_id = "scenario3b" if use_residual_cont else "scenario3"
-                        elif use_residual_cde:
-                            scenario_id = "scenario4"
                         else:
                             scenario_id = "scenario2"
                         rollout["scenario"] = scenario_id
@@ -2544,8 +2131,6 @@ Note: Assurez-vous d'utiliser le même environnement Python que Streamlit.
                                 st.session_state.scenario3b_rollout = rollout
                             else:
                                 st.session_state.scenario3_rollout = rollout
-                        elif use_residual_cde:
-                            st.session_state.scenario4_rollout = rollout
                         else:
                             st.session_state.scenario2_rollout = rollout
                         
@@ -2615,8 +2200,8 @@ Note: Assurez-vous d'utiliser le même environnement Python que Streamlit.
             # Afficher les métriques du dernier rollout évalué (rétrocompatibilité)
             # On essaie d'abord les rollouts séparés, puis l'ancien format
             rollout = None
-            if st.session_state.scenario4_rollout is not None:
-                rollout = st.session_state.scenario4_rollout
+            if st.session_state.scenario3b_rollout is not None:
+                rollout = st.session_state.scenario3b_rollout
             elif st.session_state.scenario3_rollout is not None:
                 rollout = st.session_state.scenario3_rollout
             elif st.session_state.scenario2_rollout is not None:
@@ -2679,1171 +2264,495 @@ Note: Assurez-vous d'utiliser le même environnement Python que Streamlit.
                     st.metric("⚠️ Jours hors confort", f"{days_stress} / {len(rollout['psi'])}")
                 
                 st.info("✅ Consultez l'onglet 'Visualisation' pour voir les graphiques détaillés.")
-    
+
+    # --------------------------------------------------------------------
+    # ROBUSTESSE (LEVEL 3): test splits et sols multiples
+    # --------------------------------------------------------------------
+    robust_language = st.session_state.get("ui_language", "fr")
+    tr_robust = lambda fr, en: fr if robust_language == "fr" else en
+    st.markdown(
+        f"### {tr_robust('🛡️ Évaluation de robustesse', '🛡️ Robustness evaluation')}"
+    )
+    st.markdown(
+        "<div style='height:4px; width:100%; background:#2f80ed; border-radius:4px; margin:0 0 14px 0;'></div>",
+        unsafe_allow_html=True,
+    )
+    with st.container():
+        st.info(tr_robust(
+            "ℹ️ Testez le modèle sur d'autres années/fichiers ERA5-Land et classes de sols.",
+            "ℹ️ Test the model on other ERA5-Land years/files and soil classes.",
+        ))
+        default_test_files = "data/era5_land_fr_spring2025_all_nc3.nc"
+        test_files_raw = st.text_area(
+            tr_robust("Fichiers ERA5-Land de test (un chemin par ligne)", "Test ERA5-Land files (one path per line)"),
+            value=default_test_files,
+            help=tr_robust(
+                "Chaque ligne = un fichier ERA5-Land (NetCDF) pour la validation hors période.",
+                "Each line = one ERA5-Land (NetCDF) file for out-of-period validation.",
+            ),
+        )
+        # Soil presets tuned closer to ERA5 swvl ranges
+        soil_presets = {
+            # Slightly drier FC and lower drainage to tighten runoff/soil moisture
+            "sandy": dict(theta_fc=0.12, theta_wp=0.06, theta_s=0.42, Z_r=240.0, k_d=0.09),
+            "loam": dict(theta_fc=0.15, theta_wp=0.08, theta_s=0.45, Z_r=260.0, k_d=0.11),
+            "clay": dict(theta_fc=0.22, theta_wp=0.12, theta_s=0.50, Z_r=350.0, k_d=0.09),
+        }
+        selected_soils = st.multiselect(
+            tr_robust("Classes de sol à tester", "Soil classes to test"),
+            options=list(soil_presets.keys()),
+            default=list(soil_presets.keys()),
+        )
+        has_model = model is not None
+        if not has_model:
+            st.info(tr_robust(
+                "ℹ️ Chargez/entraînez un modèle (Scénario 2/3) avant de lancer la robustesse.",
+                "ℹ️ Load/train a model (Scenario 2/3) before running robustness.",
+            ))
+        run_robust = st.button(
+            tr_robust("Lancer l'évaluation robustesse (années/sols)", "Run robustness evaluation (years/soils)"),
+            disabled=not has_model,
+        )
+        if run_robust and has_model:
+            rows = []
+            from pathlib import Path
+            for fpath in [l.strip() for l in test_files_raw.splitlines() if l.strip()]:
+                try:
+                    era_bundle = load_data_for_simulation(
+                        data_source="era5_land",
+                        file_path=fpath,
+                        resample_freq="1D",
+                    )
+                except Exception as exc:
+                    st.warning(tr_robust(f"Impossible de charger {fpath}: {exc}", f"Unable to load {fpath}: {exc}"))
+                    continue
+                for soil_name in selected_soils:
+                    soil_override = soil_presets.get(soil_name, {})
+                    eval_kwargs = {
+                        "model": model,
+                        "season_length": len(np.asarray(era_bundle.get("rain", []))) or st.session_state.get("season_length", 120),
+                        "max_irrigation": st.session_state.get("max_irrigation", 20.0),
+                        "seed": eval_seed,
+                        "soil_params": {**(st.session_state.get("soil_params") or {}), **soil_override},
+                        "weather_params": st.session_state.get("weather_params"),
+                        "data_source": "era5_land",
+                        "data_path": fpath,
+                        "era5_land_cfg": {"use_era5_land": True, "data_path": fpath, "resample_freq": "1D"},
+                    }
+                    if use_residual and st.session_state.scenario3_residual_model is not None:
+                        eval_kwargs["residual_ode"] = st.session_state.scenario3_residual_model
+                    rollout_rb = evaluate_episode(**eval_kwargs)
+                    sim_outputs_rb = rollout_to_sim_outputs(rollout_rb)
+                    results_rb = summarize_era5_land_validation(sim_outputs_rb, era_bundle)
+                    for metric, vals in results_rb.items():
+                        rows.append({
+                            "test_file": Path(fpath).name,
+                            "soil": soil_name,
+                            "metric": metric,
+                            "bias": vals.get("bias"),
+                            "rmse": vals.get("rmse"),
+                            "ubrmse": vals.get("ubrmse"),
+                            "kge": vals.get("kge"),
+                        })
+            if rows:
+                df_rb = pd.DataFrame(rows)
+                # Pivot for quick scan on key metrics
+                key_metrics = df_rb[df_rb["metric"].isin(["ETc", "fluxes/runoff", "soil_moisture/bucket_total_mm", "rain", "et0"])]
+                pivot = key_metrics.pivot_table(
+                    index=["test_file", "soil"],
+                    columns="metric",
+                    values=["bias", "rmse", "kge"],
+                    aggfunc="first",
+                )
+                st.dataframe(pivot)
+                csv_rb = df_rb.to_csv(index=False).encode("utf-8")
+                st.download_button(
+                    tr_robust("📥 Télécharger résultats robustesse (CSV)", "📥 Download robustness results (CSV)"),
+                    csv_rb,
+                    file_name="robustness_metrics.csv",
+                    mime="text/csv",
+                )
+            else:
+                st.info(tr_robust("Aucun résultat généré.", "No results generated."))
+
     # ========================================================================
     # ONGLET 8 : VISUALISATION
     # ========================================================================
     with tab6:
         language = st.session_state.get("ui_language", "fr")
-        ui_text = {
-            "fr": {
-                "header": "📊 Visualisation des résultats",
-                "choose_scenario": "Choisir le scénario à visualiser",
-                "no_scenario1": "⚠️ Aucune simulation du scénario 1 disponible. Veuillez d'abord simuler dans l'onglet 'Scénario 1'.",
-                "rule_used": "**Règle utilisée :** {rule} | **Paramètres :** {params}",
-                "interpretation_title": "📖 Comment interpréter les courbes et prendre des décisions",
-                "details_table": "### 📋 Données détaillées",
-                "download": "📥 Télécharger les données (CSV)",
-                "scenario1_title": "Scénario 1 — {rule}",
-                "df_cols": ["Jour", "Tension ψ (cbar)", "Réserve S (mm)", "Irrigation (mm)", "Pluie (mm)", "ET0 (mm/j)", "Kc (-)", "ETc (mm)", "Drainage (mm)"],
-                "interpretation_md": """
-                    ### 🧭 Guide de lecture rapide
+        tr = lambda fr, en: fr if language == "fr" else en
 
-                    #### 1️⃣ **Tension matricielle $\\psi_t$ (cbar)**
-                    - **Zone verte (20-60 cbar)** : plage optimale à viser
-                    - **Pics >80 cbar** : stress hydrique, irriguer rapidement
-                    - **Pics <20 cbar** : sol saturé, risque d'asphyxie racinaire
+        st.markdown(f'<h2 class="section-header">{tr("📊 Visualisation des résultats", "📊 Results visualization")}</h2>', unsafe_allow_html=True)
 
-                    #### 2️⃣ **Réserve en eau $S_t$ (mm)**
-                    - **Entre $S_{wp}$ et $S_{fc}$** : zone utile pour la culture
-                    - **Au-dessus $S_{fc}$** : drainage probable (pertes)
-                    - **Sous $S_{wp}$** : stress sévère, rendement en danger
-
-                    #### 3️⃣ **Irrigation et Pluie (mm)**
-                    - Bars bleues : irrigation
-                    - Bars cyan : pluie
-
-                    **Décisions :**
-                    - Avant pluie prévue : réduire/repousser l'irrigation
-                    - Après pluie forte : attendre le drainage avant d'irriguer
-
-                    #### 4️⃣ **Évapotranspiration ETc et Drainage D (mm)**
-                    - **ETc (orange)** : demande en eau de la culture
-                    - **Drainage (violet)** : pertes d'eau à minimiser
-                    """,
-            },
-            "en": {
-                "header": "📊 Results visualization",
-                "choose_scenario": "Choose a scenario to display",
-                "no_scenario1": "⚠️ No Scenario 1 simulation available. Please run it first in the 'Scenario 1' tab.",
-                "rule_used": "**Rule used:** {rule} | **Parameters:** {params}",
-                "interpretation_title": "📖 How to read the charts and make decisions",
-                "details_table": "### 📋 Detailed data",
-                "download": "📥 Download data (CSV)",
-                "scenario1_title": "Scenario 1 — {rule}",
-                "df_cols": ["Day", "Tension ψ (cbar)", "Soil storage S (mm)", "Irrigation (mm)", "Rain (mm)", "ET0 (mm/d)", "Kc (-)", "ETc (mm)", "Drainage (mm)"],
-                "interpretation_md": """
-                    ### 🧭 Quick reading guide
-
-                    #### 1️⃣ **Soil tension $\\psi_t$ (cbar)**
-                    - **Green band (20-60 cbar)**: optimal range to target
-                    - **Peaks >80 cbar**: water stress, irrigate quickly
-                    - **Peaks <20 cbar**: saturated soil, risk of root asphyxia
-
-                    #### 2️⃣ **Soil storage $S_t$ (mm)**
-                    - **Between $S_{wp}$ and $S_{fc}$**: usable zone for the crop
-                    - **Above $S_{fc}$**: likely drainage (losses)
-                    - **Below $S_{wp}$**: severe stress, yield at risk
-
-                    #### 3️⃣ **Irrigation and Rain (mm)**
-                    - Blue bars: irrigation
-                    - Cyan bars: rain
-
-                    **Decisions:**
-                    - Before expected rain: reduce/postpone irrigation
-                    - After heavy rain: wait for drainage before irrigating again
-
-                    #### 4️⃣ **Evapotranspiration ETc and Drainage D (mm)**
-                    - **ETc (orange)**: crop water demand
-                    - **Drainage (purple)**: water losses to minimize
-                    """,
-            },
+        viz_options = {
+            "scenario1": tr("Scénario 1 (Règles simples)", "Scenario 1 (Simple rules)"),
+            "scenario2": tr("Scénario 2 (PPO physique)", "Scenario 2 (PPO physical)"),
+            "scenario3": tr("Scénario 3 (PPO hybride Neural ODE)", "Scenario 3 (PPO hybrid Neural ODE)"),
+            "scenario3b": tr("Scénario 3b (Neural ODE continu)", "Scenario 3b (Continuous Neural ODE)"),
         }
-        # Utilise la langue globale choisie dans la sidebar
-        language = st.session_state.get("ui_language", "fr")
-
-        st.markdown(f'<h2 class="section-header">{ui_text[language]["header"]}</h2>', unsafe_allow_html=True)
-        
-        scenario_definitions = [
-            ("scenario1", {"fr": "Scénario 1 (Règles simples)", "en": "Scenario 1 (Simple rules)"}),
-            ("scenario2", {"fr": "Scénario 2 (PPO)", "en": "Scenario 2 (PPO)"}),
-            ("scenario3", {"fr": "Scénario 3 (PPO hybride Neural ODE)", "en": "Scenario 3 (PPO hybrid Neural ODE)"}),
-            ("scenario3b", {"fr": "Scénario 3b (Neural ODE continu)", "en": "Scenario 3b (Continuous Neural ODE)"}),
-            ("scenario4", {"fr": "Scénario 4 (PPO hybride Neural CDE)", "en": "Scenario 4 (PPO hybrid Neural CDE)"}),
-        ]
-        scenario_options = [labels[language] for _, labels in scenario_definitions]
-        selected_label = st.radio(
-            ui_text[language]["choose_scenario"],
-            options=scenario_options,
-            horizontal=True
+        selected = st.radio(
+            tr("Choisir le scénario", "Choose scenario"),
+            options=list(viz_options.keys()),
+            format_func=lambda k: viz_options[k],
+            horizontal=True,
         )
-        scenario_to_plot = scenario_definitions[scenario_options.index(selected_label)][0]
-        
-        # Fonction helper pour afficher tous les paramètres configurables de la sidebar
-        def display_soil_and_tension_params():
-            """Affiche un récapitulatif de tous les paramètres configurables avec des sections masquables."""
-            soil_params = st.session_state.get("soil_params", {})
-            if not soil_params:
-                # Utiliser les valeurs par défaut de PhysicalBucket
-                soil = PhysicalBucket()
+
+        if selected == "scenario1":
+            sim = st.session_state.get("scenario1_result")
+            if sim is None:
+                st.warning(tr("⚠️ Exécutez d'abord le Scénario 1.", "⚠️ Run Scenario 1 first."))
             else:
-                soil = PhysicalBucket(**soil_params)
-            
-            weather_params = st.session_state.get("weather_params", {})
-            season_length = st.session_state.get("season_length", 120)
-            max_irrigation = st.session_state.get("max_irrigation", 20.0)
-            seed = st.session_state.get("seed", 123)
-            
-            #st.markdown("### 📋 Paramètres de configuration")
-            
-            # Paramètres du sol (masquable)
-            with st.expander("🌱 **Paramètres du sol**", expanded=False):
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.markdown("**Paramètres géométriques :**")
-                    st.markdown(f"""
-                    - **Z_r** (profondeur racinaire) : {soil.Z_r:.0f} mm
-                    - **θ_s** (saturation) : {soil.theta_s:.2f}
-                    - **θ_fc** (capacité au champ) : {soil.theta_fc:.2f}
-                    - **θ_wp** (point de flétrissement) : {soil.theta_wp:.2f}
-                    """)
-                with col2:
-                    st.markdown("**Réserves calculées :**")
-                    st.markdown(f"""
-                    - **S_max** (réserve max) : {soil.S_max:.1f} mm
-                    - **S_fc** (réserve capacité au champ) : {soil.S_fc:.1f} mm
-                    - **S_wp** (réserve point de flétrissement) : {soil.S_wp:.1f} mm
-                    """)
-                st.markdown("**Paramètres hydrauliques :**")
-                st.markdown(f"""
-                - **k_d** (coefficient drainage) : {soil.k_d:.2f}
-                - **η_I** (efficacité irrigation) : {soil.eta_I:.2f}
-                """)
-            
-            # Paramètres de tension (masquable)
-            with st.expander("💧 **Paramètres de tension**", expanded=False):
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.markdown("**Tensions caractéristiques :**")
-                    st.markdown(f"""
-                    - **ψ_sat** (saturation) : {soil.psi_sat:.1f} cbar
-                    - **ψ_fc** (capacité au champ) : {soil.psi_fc:.1f} cbar
-                    - **ψ_wp** (point de flétrissement) : {soil.psi_wp:.0f} cbar
-                    - **ψ_ET_crit** (seuil stress ET) : {soil.psi_ET_crit:.0f} cbar
-                    """)
-                with col2:
-                    st.markdown("**Zones de tension :**")
-                    st.markdown("""
-                    - 🟢 **Optimale** : 20-60 cbar (objectif de la politique RL)
-                    - 🟡 **Alerte** : <20 ou 60-80 cbar (stress modéré)
-                    - 🔴 **Critique** : <20 ou >80 cbar (stress sévère)
-                    """)
-            
-            # Paramètres météorologiques (masquable)
-            with st.expander("🌦️ **Paramètres météorologiques**", expanded=False):
-                if weather_params:
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown("**ET0 (évapotranspiration de référence) :**")
-                        st.markdown(f"""
-                        - **ET0 base** : {weather_params.get('et0_base', 4.0):.1f} mm/j
-                        - **ET0 amplitude** : {weather_params.get('et0_amp', 2.0):.1f}
-                        - **ET0 bruit** : {weather_params.get('et0_noise', 0.3):.1f}
-                        """)
-                    with col2:
-                        st.markdown("**Pluie :**")
-                        st.markdown(f"""
-                        - **Prob. pluie début saison** : {weather_params.get('p_rain_early', 0.25):.2f}
-                        - **Prob. pluie milieu saison** : {weather_params.get('p_rain_mid', 0.15):.2f}
-                        - **Prob. pluie fin saison** : {weather_params.get('p_rain_late', 0.20):.2f}
-                        """)
-                    st.markdown("**Intensités de pluie :**")
-                    st.markdown(f"""
-                    - **Pluie min** : {weather_params.get('rain_min', 3.0):.1f} mm
-                    - **Pluie max** : {weather_params.get('rain_max', 25.0):.1f} mm
-                    """)
-                else:
-                    st.warning("⚠️ Paramètres météorologiques non définis (valeurs par défaut utilisées)")
-            
-            # Paramètres d'environnement (masquable)
-            with st.expander("🎯 **Paramètres d'environnement**", expanded=False):
-                st.markdown(f"""
-                - **Longueur de saison** : {season_length} jours
-                - **Irrigation maximale** : {max_irrigation:.1f} mm/jour
-                - **Graine aléatoire** : {seed}
-                """)
-        
-        if scenario_to_plot == "scenario1":
-            if "scenario1_result" not in st.session_state or st.session_state.scenario1_result is None:
-                st.warning(ui_text[language]["no_scenario1"])
-            else:
-                sim = st.session_state.scenario1_result
-                
-                # Extraction du nom de la règle utilisée pour personnaliser le titre
-                rule_name = sim.get("params", {}).get("rule_fn", "règle inconnue")
-                # Mapping des noms de fonctions vers des noms lisibles
-                rule_display_names = {
-                    "rule_seuil_unique": {"fr": "Règle à seuil unique", "en": "Single-threshold rule"},
-                    "rule_bande_confort": {"fr": "Règle bande de confort", "en": "Comfort-band rule"},
-                    "rule_proportionnelle": {"fr": "Règle proportionnelle", "en": "Proportional rule"}
-                }
-                rule_display = rule_display_names.get(rule_name, {"fr": rule_name, "en": rule_name}).get(language, rule_name)
-                
-                # Affichage des paramètres de la règle
-                rule_kwargs = sim.get("params", {}).get("rule_kwargs", {})
-                if rule_kwargs:
-                    st.info(ui_text[language]["rule_used"].format(rule=rule_display, params=rule_kwargs))
-                
-                # Bloc explicatif pour l'interprétation des courbes
-                with st.expander(ui_text[language]["interpretation_title"], expanded=False):
-                    st.markdown(ui_text[language]["interpretation_md"])
-                
-                # Graphiques avec titre personnalisé
-                title = ui_text[language]["scenario1_title"].format(rule=rule_display)
-                fig = plot_scenario1(sim, title=title, language=language)
+                fig = plot_scenario1(sim, language=language)
                 st.pyplot(fig)
-                
-                # Tableau de données
-                st.markdown(ui_text[language]["details_table"])
-                
-                df_cols = ui_text[language]["df_cols"]
                 df = pd.DataFrame({
-                    df_cols[0]: np.arange(len(sim['I'])),
-                    df_cols[1]: sim['psi'][1:],
-                    df_cols[2]: sim['S'][1:],
-                    df_cols[3]: sim['I'],
-                    df_cols[4]: sim['rain'],
-                    df_cols[5]: sim['ET0'],
-                    df_cols[6]: sim['Kc'],
-                    df_cols[7]: sim['ETc'],
-                    df_cols[8]: sim['D']
+                    "day": np.arange(len(sim["I"])),
+                    "psi": sim["psi"][1:],
+                    "S": sim["S"][1:],
+                    "I": sim["I"],
+                    "rain": sim["rain"],
+                    "ETc": sim["ETc"],
+                    "D": sim["D"],
                 })
-                
-                st.dataframe(df, width='stretch', height=400)
-                
-                # Téléchargement des données
-                csv = df.to_csv(index=False)
-                st.download_button(
-                    label=ui_text[language]["download"],
-                    data=csv,
-                    file_name="scenario1_results.csv",
-                    mime="text/csv"
-                )
-        
-        elif scenario_to_plot == "scenario2":
-            if st.session_state.scenario2_rollout is None:
-                # Essayer rétrocompatibilité avec evaluation_rollout
-                if "evaluation_rollout" in st.session_state and st.session_state.evaluation_rollout is not None:
-                    rollout = st.session_state.evaluation_rollout
-                    if rollout.get("scenario") != "scenario3":
-                        # C'est un ancien rollout du scénario 2, on le migre
-                        st.session_state.scenario2_rollout = rollout
-                    else:
-                        st.warning("⚠️ Aucune évaluation du scénario 2 disponible. Veuillez d'abord évaluer un modèle du scénario 2 dans l'onglet 'Évaluation'.")
-                        rollout = None
-                else:
-                    st.warning("⚠️ Aucune évaluation disponible. Veuillez d'abord évaluer un modèle du scénario 2 dans l'onglet 'Évaluation'.")
-                    rollout = None
+                st.dataframe(df, width='stretch', height=350)
+        else:
+            rollout_map = {
+                "scenario2": st.session_state.get("scenario2_rollout"),
+                "scenario3": st.session_state.get("scenario3_rollout"),
+                "scenario3b": st.session_state.get("scenario3b_rollout"),
+            }
+            rollout = rollout_map[selected]
+            if rollout is None:
+                st.warning(tr("⚠️ Évaluez d'abord ce scénario.", "⚠️ Evaluate this scenario first."))
             else:
-                rollout = st.session_state.scenario2_rollout
-            
-            if rollout is not None:
-                    # Afficher les paramètres du sol et de tension
-                    display_soil_and_tension_params()
-                    
-                    # Bloc explicatif pour l'interprétation des courbes
-                    with st.expander("📖 Comment interpréter les courbes et prendre des décisions", expanded=False):
-                        st.markdown("""
-                    ### 📊 Guide d'interprétation des graphiques
-                    
-                    Les graphiques ci-dessous présentent 4 panneaux pour analyser la performance de la politique RL apprise :
-                    
-                    #### 1️⃣ **Tension matricielle ψ (cbar)**
-                    - **Zone optimale (vert, 20-60 cbar)** : Objectif principal de la politique RL
-                    - **Zone d'alerte (jaune, <20 ou 60-80 cbar)** : Stress hydrique modéré, la politique devrait réagir
-                    - **Zone critique (rouge, <20 ou >80 cbar)** : Échec de la politique, stress hydrique sévère
-                    
-                    **Évaluation de la politique** :
-                    - **Performance excellente** : $\\psi_t$ reste dans [20, 60] cbar >80% du temps
-                    - **Performance acceptable** : Quelques excursions en zone d'alerte, récupération rapide
-                    - **Performance insuffisante** : Excursions fréquentes en zone critique, nécessite ré-entraînement
-                    
-                    **Décisions à prendre si la politique échoue** :
-                    - Si $\\psi_t > 80$ cbar fréquemment : **Augmenter la pénalité de stress** dans la récompense, ou **réduire l'horizon de prévision**
-                    - Si $\\psi_t < 20$ cbar fréquemment : **Augmenter la pénalité de drainage**, ou **réduire les doses maximales**
-                    
-                    #### 2️⃣ **Réserve en eau S (mm)**
-                    - **Au-dessus de S_fc** : Saturation, la politique devrait éviter cette zone
-                    - **Entre S_fc et S_wp** : Zone de fonctionnement normal
-                    - **En dessous de S_wp** : Stress sévère, la politique a échoué
-                    
-                    **Évaluation de la politique** :
-                    - **Gestion efficace** : $S_t$ oscille autour de $S_{fc}$ sans dépassements majeurs
-                    - **Gestion conservatrice** : $S_t$ reste proche de $S_{wp}$ (risque de stress)
-                    - **Gestion excessive** : $S_t$ dépasse souvent $S_{fc}$ (gaspillage d'eau)
-                    
-                    #### 3️⃣ **Irrigation et Pluie (mm)**
-                    - **Irrigation (bleu)** : Actions choisies par la politique RL apprise
-                    - **Pluie (cyan)** : Événements pluvieux naturels
-                    
-                    **Évaluation de la politique** :
-                    - **Stratégie adaptative** : Réduction de l'irrigation avant les pluies prévues (bonne utilisation des prévisions)
-                    - **Stratégie réactive** : Irrigation après les périodes sèches (moins efficace mais acceptable)
-                    - **Stratégie inefficace** : Irrigation pendant ou juste après la pluie (gaspillage)
-                    
-                    **Décisions à prendre** :
-                    - Si l'irrigation ignore les pluies : **Améliorer les prévisions météo** dans l'observation, ou **augmenter le poids des prévisions** dans la récompense
-                    - Si l'irrigation est trop fréquente : **Augmenter la pénalité $\\beta$ sur l'utilisation d'eau**
-                    
-                    #### 4️⃣ **Évapotranspiration ETc et Drainage D (mm)**
-                    - **ETc (orange)** : Demande en eau de la culture (flux nécessaire, inévitable)
-                    - **Drainage D (violet)** : Pertes d'eau par percolation (à minimiser par la politique)
-                    
-                    **Évaluation de la politique** :
-                    - **Efficacité élevée** : Drainage minimal malgré une bonne gestion de $\\psi_t$ (bon compromis)
-                    - **Efficacité modérée** : Drainage acceptable, mais pourrait être réduit
-                    - **Efficacité faible** : Drainage élevé, gaspillage d'eau (nécessite ajustement de la récompense)
-                    
-                    **Décisions à prendre** :
-                    - Si drainage élevé : **Augmenter la pénalité $\\gamma$ sur le drainage** dans la récompense
-                    - Si ETc élevé avec $\\psi_t$ élevé : La politique devrait irriguer plus, **vérifier la récompense de stress**
-                    
-                    ### ✅ Indicateurs de performance d'une bonne politique RL
-                    
-                    Une politique RL performante devrait :
-                    - **Maintenir $\\psi_t$ dans [20, 60] cbar** >80% du temps (objectif principal)
-                    - **Minimiser le drainage D** tout en maintenant un bon état hydrique (efficacité)
-                    - **Adapter l'irrigation aux prévisions météo** (utilisation intelligente des informations)
-                    - **Éviter les oscillations excessives** de $\\psi_t$ (stabilité de la politique)
-                    - **Optimiser l'utilisation d'eau** (compromis entre stress et consommation)
-                    
-                    ### 🔧 Ajustements possibles
-                    
-                    Si la performance n'est pas satisfaisante, considérer :
-                    - **Ré-entraînement avec des poids de récompense ajustés** ($\\alpha$, $\\beta$, $\\gamma$)
-                    - **Augmentation du temps d'entraînement** (plus d'épisodes)
-                    - **Modification de l'espace d'observation** (ajout de variables pertinentes)
-                    - **Ajustement des hyperparamètres** de l'algorithme PPO
-                    """)
-                    
-                    # Graphiques
-                    title_map = {
-                        "fr": "Scénario 2 — Résultats de l'évaluation PPO",
-                        "en": "Scenario 2 — PPO evaluation results",
-                    }
-                    fig = plot_episode_rollout(rollout, title=title_map[language], language=language)
-                    st.pyplot(fig)
-                    
-                    # Tableau de données
-                    st.markdown(ui_text[language]["details_table"])
-                    
-                    df_cols = {
-                        "fr": ["Jour", "Tension ψ (cbar)", "Réserve S (mm)", "Irrigation (mm)", "Pluie (mm)", "ETc (mm)", "Drainage (mm)"],
-                        "en": ["Day", "Tension ψ (cbar)", "Soil storage S (mm)", "Irrigation (mm)", "Rain (mm)", "ETc (mm)", "Drainage (mm)"],
-                    }[language]
-                    df = pd.DataFrame({
-                        df_cols[0]: np.arange(len(rollout['I'])),
-                        df_cols[1]: rollout['psi'][1:],
-                        df_cols[2]: rollout['S'][1:],
-                        df_cols[3]: rollout['I'],
-                        df_cols[4]: rollout['R'],
-                        df_cols[5]: rollout['ETc'],
-                        df_cols[6]: rollout['D']
-                    })
-                    
-                    st.dataframe(df, width='stretch', height=400)
-                    
-                    # Téléchargement des données
-                    csv = df.to_csv(index=False)
-                    st.download_button(
-                        label=ui_text[language]["download"],
-                        data=csv,
-                        file_name="scenario2_ppo_results.csv",
-                        mime="text/csv"
-                    )
+                fig = plot_episode_rollout(rollout, title=viz_options[selected], language=language)
+                st.pyplot(fig)
+                df = pd.DataFrame({
+                    "day": np.arange(len(rollout["I"])),
+                    "psi": rollout["psi"][1:],
+                    "S": rollout["S"][1:],
+                    "I": rollout["I"],
+                    "R": rollout["R"],
+                    "ETc": rollout["ETc"],
+                    "D": rollout["D"],
+                })
+                st.dataframe(df, width='stretch', height=350)
 
-        elif scenario_to_plot == "scenario3":
-            if st.session_state.scenario3_rollout is None:
-                # Essayer rétrocompatibilité avec evaluation_rollout
-                if "evaluation_rollout" in st.session_state and st.session_state.evaluation_rollout is not None:
-                    rollout = st.session_state.evaluation_rollout
-                    if rollout.get("scenario") == "scenario3":
-                        # C'est un ancien rollout du scénario 3, on le migre
-                        st.session_state.scenario3_rollout = rollout
-                    else:
-                        st.warning("⚠️ Aucune évaluation du scénario 3 disponible. Veuillez d'abord évaluer un modèle du scénario 3 dans l'onglet 'Évaluation'.")
-                        rollout = None
-                else:
-                    st.warning("⚠️ Aucune évaluation disponible. Veuillez d'abord évaluer un modèle du scénario 3 dans l'onglet 'Évaluation'.")
-                    rollout = None
-            else:
-                rollout = st.session_state.scenario3_rollout
-            
-            if rollout is not None:
-                if st.session_state.scenario3_ppo_model is None:
-                    st.warning("⚠️ Aucun modèle du scénario 3 entraîné. Veuillez d'abord entraîner un modèle dans l'onglet 'Scénario 3 (Neural ODE)'.")
-                else:
-                    # Afficher les paramètres du sol et de tension
-                    display_soil_and_tension_params()
-                    
-                    # Bloc explicatif pour l'interprétation des courbes
-                    with st.expander("📖 Comment interpréter les courbes et prendre des décisions", expanded=False):
-                        st.markdown("""
-                        ### 📊 Guide d'interprétation des graphiques (Scénario 3 — Modèle hybride)
-                        
-                        Les graphiques ci-dessous présentent 4 panneaux pour analyser la performance de la politique RL 
-                        apprise sur le modèle hybride (Physique + Neural ODE) :
-                        
-                        #### 1️⃣ **Tension matricielle ψ (cbar)**
-                        - **Zone optimale (vert, 20-60 cbar)** : Objectif principal de la politique RL
-                        - **Zone d'alerte (jaune, <20 ou 60-80 cbar)** : Stress hydrique modéré
-                        - **Zone critique (rouge, <20 ou >80 cbar)** : Stress hydrique sévère
-                        
-                        **Spécificité du modèle hybride** :
-                        - Le modèle hybride combine prédiction physique ($\\psi_{t+1}^{phys}$) et correction neuronale ($\\Delta \\psi$)
-                        - La correction $\\Delta \\psi$ apprend à compenser les biais du modèle physique
-                        - Une bonne politique devrait exploiter cette meilleure précision du modèle
-                        
-                        **Évaluation de la politique** :
-                        - **Performance excellente** : $\\psi_t$ reste dans [20, 60] cbar >80% du temps
-                        - **Performance acceptable** : Quelques excursions en zone d'alerte, récupération rapide
-                        - **Performance insuffisante** : Excursions fréquentes en zone critique
-                        
-                        #### 2️⃣ **Réserve en eau S (mm)**
-                        - **Au-dessus de S_fc** : Saturation, la politique devrait éviter cette zone
-                        - **Entre S_fc et S_wp** : Zone de fonctionnement normal
-                        - **En dessous de S_wp** : Stress sévère
-                        
-                        **Spécificité du modèle hybride** :
-                        - Le modèle hybride devrait mieux prédire l'évolution de $S_t$ grâce à la correction neuronale
-                        - La politique peut donc être plus précise dans sa gestion de la réserve
-                        
-                        #### 3️⃣ **Irrigation et Pluie (mm)**
-                        - **Irrigation (bleu)** : Actions choisies par la politique RL apprise
-                        - **Pluie (cyan)** : Événements pluvieux naturels
-                        
-                        **Spécificité du modèle hybride** :
-                        - Le modèle hybride devrait mieux prédire les effets de l'irrigation grâce à la correction neuronale
-                        - La politique peut donc optimiser plus finement les doses d'irrigation
-                        
-                        #### 4️⃣ **Évapotranspiration ETc et Drainage D (mm)**
-                        - **ETc (orange)** : Demande en eau de la culture
-                        - **Drainage D (violet)** : Pertes d'eau par percolation
-                        
-                        **Spécificité du modèle hybride** :
-                        - Le modèle hybride devrait mieux prédire les flux sortants (ETc, D)
-                        - La politique peut donc mieux équilibrer irrigation et drainage
-                        
-                        ### ✅ Avantages du modèle hybride pour la politique RL
-                        
-                        - **Meilleure précision** : La correction neuronale améliore la prédiction du modèle physique
-                        - **Apprentissage plus efficace** : La politique apprend sur un modèle plus réaliste
-                        - **Meilleure généralisation** : Le modèle hybride capture mieux les spécificités de la parcelle
-                        
-                        ### 🔧 Ajustements possibles
-                        
-                        Si la performance n'est pas satisfaisante :
-                        - **Ré-entraîner le Neural ODE** avec plus de données ou plus d'epochs
-                        - **Ajuster les poids de récompense** ($\\alpha$, $\\beta$, $\\gamma$)
-                        - **Augmenter le temps d'entraînement PPO** (plus d'épisodes)
-                        - **Vérifier la qualité du pré-entraînement** du Neural ODE
-                        """)
-                    
-                    # Graphiques
-                    title_map = {
-                        "fr": "Scénario 3 — Résultats de l'évaluation PPO hybride (Neural ODE)",
-                        "en": "Scenario 3 — PPO hybrid (Neural ODE) evaluation",
-                    }
-                    fig = plot_episode_rollout(rollout, title=title_map[language], language=language)
-                    st.pyplot(fig)
-                    
-                    # Tableau de données
-                    st.markdown(ui_text[language]["details_table"])
-                    
-                    df_cols = {
-                        "fr": ["Jour", "Tension ψ (cbar)", "Réserve S (mm)", "Irrigation (mm)", "Pluie (mm)", "ETc (mm)", "Drainage (mm)"],
-                        "en": ["Day", "Tension ψ (cbar)", "Soil storage S (mm)", "Irrigation (mm)", "Rain (mm)", "ETc (mm)", "Drainage (mm)"],
-                    }[language]
-                    df = pd.DataFrame({
-                        df_cols[0]: np.arange(len(rollout['I'])),
-                        df_cols[1]: rollout['psi'][1:],
-                        df_cols[2]: rollout['S'][1:],
-                        df_cols[3]: rollout['I'],
-                        df_cols[4]: rollout['R'],
-                        df_cols[5]: rollout['ETc'],
-                        df_cols[6]: rollout['D']
-                    })
-                    
-                    st.dataframe(df, width='stretch', height=400)
-                    
-                    # Téléchargement des données
-                    csv = df.to_csv(index=False)
-                    st.download_button(
-                        label=ui_text[language]["download"],
-                        data=csv,
-                        file_name="scenario3_ppo_hybrid_results.csv",
-                        mime="text/csv"
-                    )
-
-        elif scenario_to_plot == "scenario3b":
-            if st.session_state.scenario3b_rollout is None:
-                st.warning("⚠️ Aucune évaluation du scénario 3b disponible. Veuillez d'abord évaluer un modèle du scénario 3b dans l'onglet 'Évaluation'.")
-                rollout = None
-            else:
-                rollout = st.session_state.scenario3b_rollout
-            
-            if rollout is not None:
-                if st.session_state.scenario3b_ppo_model is None:
-                    st.warning("⚠️ Aucun modèle du scénario 3b entraîné. Veuillez d'abord entraîner un modèle dans l'onglet 'Scénario 3b (Neural ODE continu)'.")
-                else:
-                    display_soil_and_tension_params()
-                    
-                    with st.expander("📖 Comment lire les courbes (Neural ODE continu)", expanded=False):
-                        st.markdown("""
-                        ### 🔍 Lecture des résultats (Scénario 3b — Neural ODE continu)
-
-                        - **ψ (cbar)** : reste-t-elle dans la zone optimale (20-60 cbar) avec moins d'oscillations que la version discrète ?
-                        - **Irrigation (mm)** : doses plus lissées grâce à l'intégration continue ?
-                        - **Drainage / ETc** : la correction continue aide-t-elle à limiter les pertes ?
-
-                        Le Neural ODE continu apprend dψ/dt et l'intègre, produisant des corrections plus lisses que la version discrète (scénario 3).
-                        """)
-                    
-                    title_map = {
-                        "fr": "Scénario 3b — Évaluation PPO hybride (Neural ODE continu)",
-                        "en": "Scenario 3b — PPO hybrid evaluation (Continuous Neural ODE)",
-                    }
-                    fig = plot_episode_rollout(rollout, title=title_map[language], language=language)
-                    st.pyplot(fig)
-                    
-                    st.markdown(ui_text[language]["details_table"])
-                    
-                    df_cols = {
-                        "fr": ["Jour", "Tension ψ (cbar)", "Réserve S (mm)", "Irrigation (mm)", "Pluie (mm)", "ETc (mm)", "Drainage (mm)"],
-                        "en": ["Day", "Tension ψ (cbar)", "Soil storage S (mm)", "Irrigation (mm)", "Rain (mm)", "ETc (mm)", "Drainage (mm)"],
-                    }[language]
-                    df = pd.DataFrame({
-                        df_cols[0]: np.arange(len(rollout['I'])),
-                        df_cols[1]: rollout['psi'][1:],
-                        df_cols[2]: rollout['S'][1:],
-                        df_cols[3]: rollout['I'],
-                        df_cols[4]: rollout['R'],
-                        df_cols[5]: rollout['ETc'],
-                        df_cols[6]: rollout['D']
-                    })
-                    
-                    st.dataframe(df, width='stretch', height=400)
-                    
-                    csv = df.to_csv(index=False)
-                    st.download_button(
-                        label=ui_text[language]["download"],
-                        data=csv,
-                        file_name="scenario3b_ppo_hybrid_cont_results.csv",
-                        mime="text/csv"
-                    )
-        
-        elif scenario_to_plot == "scenario4":
-            if st.session_state.scenario4_rollout is None:
-                st.warning("⚠️ Aucune évaluation du scénario 4 disponible. Veuillez d'abord évaluer un modèle du scénario 4 dans l'onglet 'Évaluation'.")
-                rollout = None
-            else:
-                rollout = st.session_state.scenario4_rollout
-            
-            if rollout is not None:
-                if st.session_state.scenario4_ppo_model is None:
-                    st.warning("⚠️ Aucun modèle du scénario 4 entraîné. Veuillez d'abord entraîner un modèle dans l'onglet 'Scénario 4 (Neural CDE)'.")
-                else:
-                    # Afficher les paramètres du sol et de tension
-                    display_soil_and_tension_params()
-                    
-                    # Bloc explicatif pour l'interprétation des courbes
-                    with st.expander("📖 Comment interpréter les courbes et prendre des décisions", expanded=False):
-                        st.markdown("""
-                        ### 📊 Guide d'interprétation des graphiques (Scénario 4 — Modèle hybride Neural CDE)
-                        
-                        Les graphiques ci-dessous présentent 4 panneaux pour analyser la performance de la politique RL 
-                        apprise sur le modèle hybride (Physique + Neural CDE) :
-                        
-                        #### 1️⃣ **Tension matricielle ψ (cbar)**
-                        - **Zone optimale (vert, 20-60 cbar)** : Objectif principal de la politique RL
-                        - **Zone d'alerte (jaune, <20 ou 60-80 cbar)** : Stress hydrique modéré
-                        - **Zone critique (rouge, <20 ou >80 cbar)** : Stress hydrique sévère
-                        
-                        **Spécificité du Neural CDE** :
-                        - Le Neural CDE utilise une séquence d'états passés pour prédire la correction $\\Delta \\psi$
-                        - Il capture des dépendances temporelles plus longues que le Neural ODE
-                        - Une bonne politique devrait exploiter cette meilleure modélisation temporelle
-                        
-                        **Évaluation de la politique** :
-                        - **Performance excellente** : $\\psi_t$ reste dans [20, 60] cbar >80% du temps
-                        - **Performance acceptable** : Quelques excursions en zone d'alerte, récupération rapide
-                        - **Performance insuffisante** : Excursions fréquentes en zone critique
-                        
-                        #### 2️⃣ **Réserve en eau S (mm)**
-                        - **Au-dessus de S_fc** : Saturation, la politique devrait éviter cette zone
-                        - **Entre S_fc et S_wp** : Zone de fonctionnement normal
-                        - **En dessous de S_wp** : Stress sévère
-                        
-                        **Spécificité du Neural CDE** :
-                        - Le Neural CDE modélise mieux l'évolution temporelle grâce aux séquences d'états
-                        - La politique peut anticiper les tendances et ajuster l'irrigation en conséquence
-                        
-                        #### 3️⃣ **Irrigation et Pluie (mm)**
-                        - **Irrigation (bleu)** : Actions choisies par la politique RL apprise
-                        - **Pluie (cyan)** : Événements pluvieux naturels
-                        
-                        **Spécificité du Neural CDE** :
-                        - Le Neural CDE peut mieux prédire les effets cumulatifs de l'irrigation sur plusieurs jours
-                        - La politique peut optimiser les stratégies d'irrigation à plus long terme
-                        
-                        #### 4️⃣ **Évapotranspiration ETc et Drainage D (mm)**
-                        - **ETc (orange)** : Demande en eau de la culture
-                        - **Drainage D (violet)** : Pertes d'eau par percolation
-                        
-                        **Spécificité du Neural CDE** :
-                        - Le Neural CDE modélise mieux les dynamiques temporelles des flux
-                        - La politique peut mieux équilibrer irrigation et drainage sur plusieurs jours
-                        
-                        ### ✅ Avantages du Neural CDE pour la politique RL
-                        
-                        - **Meilleure modélisation temporelle** : Capture les dépendances à long terme
-                        - **Anticipation améliorée** : La politique peut mieux prévoir les effets futurs
-                        - **Précision accrue** : Meilleure prédiction grâce aux séquences d'états
-                        - **Robustesse** : Gère mieux les variations temporelles complexes
-                        
-                        ### 🔧 Ajustements possibles
-                        
-                        Si la performance n'est pas satisfaisante :
-                        - **Augmenter la longueur de séquence** (seq_len_cde) pour capturer plus de dépendances
-                        - **Ré-entraîner le Neural CDE** avec plus de données ou plus d'epochs
-                        - **Ajuster les poids de récompense** ($\\alpha$, $\\beta$, $\\gamma$)
-                        - **Augmenter le temps d'entraînement PPO** (plus d'épisodes)
-                        - **Vérifier la qualité du pré-entraînement** du Neural CDE
-                        """)
-                    
-                    # Graphiques
-                    title_map = {
-                        "fr": "Scénario 4 — Résultats de l'évaluation PPO hybride (Neural CDE)",
-                        "en": "Scenario 4 — PPO hybrid (Neural CDE) evaluation",
-                    }
-                    fig = plot_episode_rollout(rollout, title=title_map[language], language=language)
-                    st.pyplot(fig)
-                    
-                    # Tableau de données
-                    st.markdown(ui_text[language]["details_table"])
-                    
-                    df_cols = {
-                        "fr": ["Jour", "Tension ψ (cbar)", "Réserve S (mm)", "Irrigation (mm)", "Pluie (mm)", "ETc (mm)", "Drainage (mm)"],
-                        "en": ["Day", "Tension ψ (cbar)", "Soil storage S (mm)", "Irrigation (mm)", "Rain (mm)", "ETc (mm)", "Drainage (mm)"],
-                    }[language]
-                    df = pd.DataFrame({
-                        df_cols[0]: np.arange(len(rollout['I'])),
-                        df_cols[1]: rollout['psi'][1:],
-                        df_cols[2]: rollout['S'][1:],
-                        df_cols[3]: rollout['I'],
-                        df_cols[4]: rollout['R'],
-                        df_cols[5]: rollout['ETc'],
-                        df_cols[6]: rollout['D']
-                    })
-                    
-                    st.dataframe(df, width='stretch', height=400)
-                    
-                    # Téléchargement des données
-                    csv = df.to_csv(index=False)
-                    st.download_button(
-                        label=ui_text[language]["download"],
-                        data=csv,
-                        file_name="scenario4_ppo_results.csv",
-                        mime="text/csv"
-                    )
-        
-    # ========================================================================
-    # ONGLET 9 : COMPARAISON DES SCÉNARIOS
-    # ========================================================================
     with tab7:
         language = st.session_state.get("ui_language", "fr")
         tr = lambda fr, en: fr if language == "fr" else en
 
         st.markdown(f'<h2 class="section-header">{tr("⚖️ Comparaison des scénarios", "⚖️ Scenario comparison")}</h2>', unsafe_allow_html=True)
-        
-        st.markdown(tr(
-            "Cet onglet permet de comparer les performances des différents scénarios entraînés et évalués. Sélectionnez les scénarios à comparer et visualisez leurs métriques côte à côte.",
-            "This tab lets you compare the performance of trained/evaluated scenarios. Select the scenarios to compare and view their metrics side by side."
-        ))
-        
-        # Sélection des scénarios à comparer
-        st.markdown(tr("### 📋 Sélection des scénarios à comparer", "### 📋 Select scenarios to compare"))
-        
-        col1, col2, col3, col3b_col, col4 = st.columns(5)
+
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
-            compare_scenario1 = st.checkbox(tr("Scénario 1 (Règles simples)", "Scenario 1 (Simple rules)"), value=False)
+            c1 = st.checkbox(tr("Scénario 1", "Scenario 1"), value=False)
         with col2:
-            compare_scenario2 = st.checkbox(tr("Scénario 2 (PPO physique)", "Scenario 2 (PPO physical)"), value=False)
+            c2 = st.checkbox(tr("Scénario 2", "Scenario 2"), value=False)
         with col3:
-            compare_scenario3 = st.checkbox(tr("Scénario 3 (PPO hybride Neural ODE)", "Scenario 3 (PPO hybrid Neural ODE)"), value=False)
-        with col3b_col:
-            compare_scenario3b = st.checkbox(tr("Scénario 3b (Neural ODE continu)", "Scenario 3b (Continuous Neural ODE)"), value=False)
+            c3 = st.checkbox(tr("Scénario 3", "Scenario 3"), value=False)
         with col4:
-            compare_scenario4 = st.checkbox(tr("Scénario 4 (PPO hybride Neural CDE)", "Scenario 4 (PPO hybrid Neural CDE)"), value=False)
-        
-        # Vérifier la disponibilité des données
-        scenarios_available = []
-        
-        if compare_scenario1:
-            if "scenario1_result" in st.session_state and st.session_state.scenario1_result is not None:
-                scenarios_available.append({
-                    "name": "Scénario 1",
-                    "type": "rules",
-                    "data": st.session_state.scenario1_result
-                })
-            else:
-                st.warning("⚠️ Scénario 1 : Aucune simulation disponible. Simulez d'abord dans l'onglet 'Scénario 1'.")
-        
-        if compare_scenario2:
-            if st.session_state.scenario2_rollout is not None:
-                scenarios_available.append({
-                    "name": "Scénario 2",
-                    "type": "ppo_physical",
-                    "data": st.session_state.scenario2_rollout
-                })
-            else:
-                # Essayer rétrocompatibilité
-                if "evaluation_rollout" in st.session_state and st.session_state.evaluation_rollout is not None:
-                    rollout = st.session_state.evaluation_rollout
-                    if rollout.get("scenario") != "scenario3":
-                        # C'est un ancien rollout du scénario 2, on le migre
-                        st.session_state.scenario2_rollout = rollout
-                        scenarios_available.append({
-                            "name": "Scénario 2",
-                            "type": "ppo_physical",
-                            "data": rollout
-                        })
-                    else:
-                        st.warning("⚠️ Scénario 2 : Aucune évaluation disponible. Évaluez d'abord le scénario 2 dans l'onglet 'Évaluation'.")
-                else:
-                    st.warning("⚠️ Scénario 2 : Aucune évaluation disponible. Évaluez d'abord dans l'onglet 'Évaluation'.")
-        
-        if compare_scenario3:
-            if st.session_state.scenario3_rollout is not None:
-                scenarios_available.append({
-                    "name": "Scénario 3",
-                    "type": "ppo_hybrid",
-                    "data": st.session_state.scenario3_rollout
-                })
-            else:
-                # Essayer rétrocompatibilité
-                if "evaluation_rollout" in st.session_state and st.session_state.evaluation_rollout is not None:
-                    rollout = st.session_state.evaluation_rollout
-                    if rollout.get("scenario") == "scenario3":
-                        # C'est un ancien rollout du scénario 3, on le migre
-                        st.session_state.scenario3_rollout = rollout
-                        scenarios_available.append({
-                            "name": "Scénario 3",
-                            "type": "ppo_hybrid",
-                            "data": rollout
-                        })
-                    else:
-                        st.warning("⚠️ Scénario 3 : Aucune évaluation disponible. Évaluez d'abord le scénario 3 dans l'onglet 'Évaluation'.")
-                else:
-                    st.warning("⚠️ Scénario 3 : Aucune évaluation disponible. Évaluez d'abord dans l'onglet 'Évaluation'.")
+            c3b = st.checkbox(tr("Scénario 3b", "Scenario 3b"), value=False)
 
-        if compare_scenario3b:
-            if st.session_state.scenario3b_rollout is not None:
-                scenarios_available.append({
-                    "name": "Scénario 3b",
-                    "type": "ppo_hybrid_cont",
-                    "data": st.session_state.scenario3b_rollout
-                })
-            else:
-                st.warning("⚠️ Scénario 3b : Aucune évaluation disponible. Évaluez d'abord le scénario 3b dans l'onglet 'Évaluation'.")
-        
-        if compare_scenario4:
-            if st.session_state.scenario4_rollout is not None:
-                scenarios_available.append({
-                    "name": "Scénario 4",
-                    "type": "ppo_hybrid_cde",
-                    "data": st.session_state.scenario4_rollout
-                })
-            else:
-                st.warning("⚠️ Scénario 4 : Aucune évaluation disponible. Évaluez d'abord le scénario 4 dans l'onglet 'Évaluation'.")
-        
-        # Afficher la comparaison si au moins 2 scénarios sont disponibles
-        if len(scenarios_available) < 2:
-            st.info(tr("💡 Sélectionnez au moins 2 scénarios avec des données disponibles pour effectuer une comparaison.",
-                       "💡 Select at least 2 scenarios with available data to run a comparison."))
+        scenarios = []
+        if c1 and st.session_state.get("scenario1_result") is not None:
+            s = st.session_state["scenario1_result"]
+            scenarios.append(("scenario1", s["I"], s["rain"], s["ETc"], s["D"], s["psi"][1:]))
+        if c2 and st.session_state.get("scenario2_rollout") is not None:
+            s = st.session_state["scenario2_rollout"]
+            scenarios.append(("scenario2", s["I"], s["R"], s["ETc"], s["D"], s["psi"][1:]))
+        if c3 and st.session_state.get("scenario3_rollout") is not None:
+            s = st.session_state["scenario3_rollout"]
+            scenarios.append(("scenario3", s["I"], s["R"], s["ETc"], s["D"], s["psi"][1:]))
+        if c3b and st.session_state.get("scenario3b_rollout") is not None:
+            s = st.session_state["scenario3b_rollout"]
+            scenarios.append(("scenario3b", s["I"], s["R"], s["ETc"], s["D"], s["psi"][1:]))
+
+        if len(scenarios) < 2:
+            st.info(tr("Sélectionnez au moins 2 scénarios avec résultats.", "Select at least 2 scenarios with results."))
         else:
-            st.markdown("---")
-            st.markdown(tr("### 📊 Métriques comparatives", "### 📊 Comparative metrics"))
-            # Libellés localisés
-            lbl = {
-                "scenario": tr("Scénario", "Scenario"),
-                "total_irrig": tr("Irrigation totale (mm)", "Total irrigation (mm)"),
-                "total_rain": tr("Pluie totale (mm)", "Total rain (mm)"),
-                "total_etc": tr("ETc totale (mm)", "Total ETc (mm)"),
-                "total_drain": tr("Drainage total (mm)", "Total drainage (mm)"),
-                "mean_psi": tr("Tension moyenne (cbar)", "Average tension (cbar)"),
-                "min_psi": tr("Tension min (cbar)", "Min tension (cbar)"),
-                "max_psi": tr("Tension max (cbar)", "Max tension (cbar)"),
-                "comfort_days": tr("Jours en confort", "Days in comfort"),
-                "day": tr("Jour", "Day"),
-                "tension": tr("Tension ψ (cbar)", "Tension ψ (cbar)"),
-                "tension_title": tr("Comparaison des tensions matricielles", "Tension comparison"),
-                "comfort_zone": tr("Zone optimale (20-60 cbar)", "Optimal zone (20-60 cbar)"),
-                "reserve": tr("Réserve S (mm)", "Soil storage S (mm)"),
-                "reserve_title": tr("Comparaison des réserves en eau", "Soil storage comparison"),
-                "irrig_rain_title": tr("Comparaison des volumes d'eau (irrigation + pluie)", "Water volumes comparison (irrigation + rain)"),
-                "volume": tr("Volume d'eau (mm)", "Water volume (mm)"),
-                "scenario_label": tr("Scénario", "Scenario"),
-                "irrig_total": tr("Irrigation totale", "Total irrigation"),
-                "rain_total": tr("Pluie totale", "Total rain"),
-                "perf_title": tr("##### 4️⃣ Métriques de performance", "##### 4️⃣ Performance metrics"),
-                "drainage_total": tr("Drainage total", "Total drainage"),
-                "days_optimal": tr("Jours en zone optimale (20-60 cbar)", "Days in optimal zone (20-60 cbar)"),
-                "objective": tr("Objectif 80%", "80% target"),
-                "mean_tension": tr("Tension matricielle moyenne", "Average matric tension"),
-                "water_eff": tr("Efficacité de l'eau (ETc / (I+R))", "Water efficiency (ETc / (I+R))"),
-                "eff_label": tr("Efficacité (-)", "Efficiency (-)"),
+            scenario_labels = {
+                "scenario1": tr("Scénario 1", "Scenario 1"),
+                "scenario2": tr("Scénario 2", "Scenario 2"),
+                "scenario3": tr("Scénario 3", "Scenario 3"),
+                "scenario3b": tr("Scénario 3b", "Scenario 3b"),
             }
-            
-            # Préparer les données pour la comparaison
-            comparison_data = []
-            for scenario in scenarios_available:
-                data = scenario["data"]
-                if scenario["type"] == "rules":
-                    # Scénario 1 : données de simulation
-                    # Note: scénario 1 utilise 'rain' au lieu de 'R'
-                    comparison_data.append({
-                        "name": scenario["name"],
-                        "total_irrigation": float(data['I'].sum()),
-                        "total_rain": float(data['rain'].sum()),
-                        "total_etc": float(data['ETc'].sum()),
-                        "total_drainage": float(data['D'].sum()),
-                        "mean_psi": float(data['psi'][1:].mean()),
-                        "min_psi": float(data['psi'][1:].min()),
-                        "max_psi": float(data['psi'][1:].max()),
-                        "days_in_comfort": int(np.sum((data['psi'][1:] >= 20) & (data['psi'][1:] <= 60))),
-                        "total_days": len(data['I']),
-                        "psi": data['psi'][1:],
-                        "S": data['S'][1:],
-                        "I": data['I'],
-                        "R": data['rain'],  # Scénario 1 utilise 'rain', on le mappe vers 'R' pour cohérence
-                        "ETc": data['ETc'],
-                        "D": data['D'],
-                        "data": data  # Garder les données originales pour accès aux env_summary si nécessaire
-                    })
-                else:
-                    # Scénario 2, 3 ou 4 : données d'évaluation
-                    comparison_data.append({
-                        "name": scenario["name"],
-                        "total_irrigation": float(data['I'].sum()),
-                        "total_rain": float(data['R'].sum()),
-                        "total_etc": float(data['ETc'].sum()),
-                        "total_drainage": float(data['D'].sum()),
-                        "mean_psi": float(data['psi'][1:].mean()),
-                        "min_psi": float(data['psi'][1:].min()),
-                        "max_psi": float(data['psi'][1:].max()),
-                        "days_in_comfort": int(np.sum((data['psi'][1:] >= 20) & (data['psi'][1:] <= 60))),
-                        "total_days": len(data['I']),
-                        "psi": data['psi'][1:],
-                        "S": data['S'][1:],
-                        "I": data['I'],
-                        "R": data['R'],
-                        "ETc": data['ETc'],
-                        "D": data['D'],
-                        "data": data  # Garder les données originales pour accès aux env_summary si nécessaire
-                    })
-            
-            # Tableau comparatif des métriques
-            st.markdown("#### 📈 Tableau comparatif")
-            
-            df_comparison = pd.DataFrame({
-                lbl["scenario"]: [s["name"] for s in comparison_data],
-                lbl["total_irrig"]: [s["total_irrigation"] for s in comparison_data],
-                lbl["total_rain"]: [s["total_rain"] for s in comparison_data],
-                lbl["total_etc"]: [s["total_etc"] for s in comparison_data],
-                lbl["total_drain"]: [s["total_drainage"] for s in comparison_data],
-                lbl["mean_psi"]: [f"{s['mean_psi']:.1f}" for s in comparison_data],
-                lbl["min_psi"]: [f"{s['min_psi']:.1f}" for s in comparison_data],
-                lbl["max_psi"]: [f"{s['max_psi']:.1f}" for s in comparison_data],
-                lbl["comfort_days"]: [f"{s['days_in_comfort']}/{s['total_days']} ({100*s['days_in_comfort']/s['total_days']:.1f}%)" for s in comparison_data],
-            })
-            
-            st.dataframe(df_comparison, width='stretch', hide_index=True)
-            
-            # Graphiques comparatifs
-            st.markdown(tr("#### 📊 Graphiques comparatifs", "#### 📊 Comparative charts"))
-            
-            # Trouver la longueur maximale pour aligner les graphiques
-            max_length = max(len(s["psi"]) for s in comparison_data)
-            
-            # Graphique 1 : Tension matricielle comparée
-            st.markdown(tr("##### 1️⃣ Tension matricielle ψ (cbar)", "##### 1️⃣ Matric tension ψ (cbar)"))
-            fig1, ax1 = plt.subplots(figsize=(14, 6))
-            # Palette élargie pour distinguer clairement chaque scénario
-            colors = [
-                "tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple",
-                "tab:brown", "tab:pink", "tab:gray", "tab:olive", "tab:cyan"
-            ]
-            for idx, scenario in enumerate(comparison_data):
-                days = np.arange(len(scenario["psi"]))
-                ax1.plot(days, scenario["psi"], label=scenario["name"], 
-                        color=colors[idx % len(colors)], linewidth=2, alpha=0.8)
-            
-            # Zone de confort
-            ax1.axhspan(20, 60, alpha=0.1, color="green", label=lbl["comfort_zone"])
-            ax1.set_xlabel(lbl["day"], fontsize=12)
-            ax1.set_ylabel(lbl["tension"], fontsize=12)
-            ax1.set_title(lbl["tension_title"], fontsize=14, fontweight="bold")
-            ax1.legend(loc='best')
-            ax1.grid(True, alpha=0.3)
-            plt.tight_layout()
-            st.pyplot(fig1)
-            
-            # Graphique 2 : Réserve en eau comparée
-            st.markdown(tr("##### 2️⃣ Réserve en eau S (mm)", "##### 2️⃣ Soil storage S (mm)"))
-            fig2, ax2 = plt.subplots(figsize=(14, 6))
-            for idx, scenario in enumerate(comparison_data):
-                days = np.arange(len(scenario["S"]))
-                ax2.plot(days, scenario["S"], label=scenario["name"], 
-                        color=colors[idx % len(colors)], linewidth=2, alpha=0.8)
-            
-            # Seuils de référence (utiliser ceux du premier scénario disponible)
-            if comparison_data:
-                first_scenario = comparison_data[0]
-                S_fc = 90.0  # Valeurs par défaut
-                S_wp = 30.0
-                
-                # Essayer de récupérer depuis env_summary (scénarios 2 et 3)
-                if "data" in first_scenario and isinstance(first_scenario["data"], dict):
-                    if "env_summary" in first_scenario["data"]:
-                        S_fc = first_scenario["data"]["env_summary"].get("S_fc", 90.0)
-                        S_wp = first_scenario["data"]["env_summary"].get("S_wp", 30.0)
-                    # Essayer depuis l'objet soil (scénario 1)
-                    elif "soil" in first_scenario["data"]:
-                        soil = first_scenario["data"]["soil"]
-                        if hasattr(soil, 'S_fc'):
-                            S_fc = float(soil.S_fc)
-                        if hasattr(soil, 'S_wp'):
-                            S_wp = float(soil.S_wp)
-                
-                ax2.axhline(S_fc, ls="--", color="gray", alpha=0.7, label="S_fc")
-                ax2.axhline(S_wp, ls="--", color="brown", alpha=0.7, label="S_wp")
-            
-            ax2.set_xlabel(lbl["day"], fontsize=12)
-            ax2.set_ylabel(lbl["reserve"], fontsize=12)
-            ax2.set_title(lbl["reserve_title"], fontsize=14, fontweight="bold")
-            ax2.legend(loc='best')
-            ax2.grid(True, alpha=0.3)
-            plt.tight_layout()
-            st.pyplot(fig2)
-            
-            # Graphique 3 : Irrigation et pluie comparées
-            st.markdown(tr("##### 3️⃣ Irrigation et pluie (mm)", "##### 3️⃣ Irrigation and rain (mm)"))
-            st.info(tr("""
-            **Comment interpréter ce graphique :**
-            - **Irrigation totale (barres bleues)** : Compare la quantité totale d'eau d'irrigation utilisée par chaque scénario.
-            - **Pluie totale (barres cyan)** : Identique pour tous les scénarios (même conditions météo).
-            - **Meilleure performance** : Un scénario avec une **barre d'irrigation plus basse** indique une meilleure efficacité (moins d'eau utilisée pour un résultat similaire ou meilleur).
-            - **Attention** : Une irrigation très faible peut aussi indiquer un stress hydrique si la pluie n'est pas suffisante. Il faut comparer avec les autres métriques (tension, jours en confort).
-            """, """
-            **How to read this chart:**
-            - **Total irrigation (blue bars)**: Compares the total irrigation water used by each scenario.
-            - **Total rain (cyan bars)**: Identical across scenarios (same weather conditions).
-            - **Better performance**: A **lower irrigation bar** means better efficiency (less water for similar or better results).
-            - **Caution**: Very low irrigation can also mean water stress if rain is insufficient. Compare with other metrics (tension, comfort days).
-            """))
-            fig3, ax3 = plt.subplots(figsize=(14, 6))
-            x_pos = np.arange(len(comparison_data))
-            width = 0.35
-            
-            irrigation_totals = [s["total_irrigation"] for s in comparison_data]
-            rain_totals = [s["total_rain"] for s in comparison_data]
-            
-            bars1 = ax3.bar(x_pos - width/2, irrigation_totals, width, label=lbl["irrig_total"], 
-                           color="tab:blue", alpha=0.7)
-            bars2 = ax3.bar(x_pos + width/2, rain_totals, width, label=lbl["rain_total"], 
-                           color="tab:cyan", alpha=0.7)
-            
-            ax3.set_xlabel(lbl["scenario_label"], fontsize=12)
-            ax3.set_ylabel(lbl["volume"], fontsize=12)
-            ax3.set_title(lbl["irrig_rain_title"], fontsize=14, fontweight="bold")
-            ax3.set_xticks(x_pos)
-            ax3.set_xticklabels([s["name"] for s in comparison_data], rotation=25, ha="right")
-            ax3.legend()
-            ax3.grid(True, alpha=0.3, axis='y')
-            
-            # Ajouter les valeurs sur les barres
-            for bars in [bars1, bars2]:
-                for bar in bars:
-                    height = bar.get_height()
-                    ax3.text(bar.get_x() + bar.get_width()/2., height,
-                            f'{height:.1f}',
-                            ha='center', va='bottom', fontsize=9)
-            
-            plt.tight_layout()
-            st.pyplot(fig3)
-            
-            # Graphique 4 : Métriques de performance comparées
-            st.markdown(lbl["perf_title"])
-            st.info(tr("""
-            **Comment interpréter ces 4 histogrammes :**
-            
-            - **Drainage total (en haut à gauche, violet)** : Plus la barre est **basse**, mieux c'est. Un drainage élevé indique un gaspillage d'eau par percolation.
-            
-            - **Jours en zone optimale (en haut à droite, vert)** : Plus la barre est **haute**, mieux c'est. Une barre proche de 100% (ou au-dessus de la ligne orange à 80%) indique une excellente gestion. C'est l'indicateur principal de performance.
-            
-            - **Tension matricielle moyenne (en bas à gauche, rouge)** : La barre doit être dans la **zone verte (20-60 cbar)** pour être optimale. Une barre trop basse (< 20) indique un sol trop humide, trop haute (> 60) indique un stress hydrique.
-            
-            - **Efficacité de l'eau (en bas à droite, orange)** : Plus la barre est **haute**, mieux c'est. Cette métrique (ETc / (I+R)) mesure combien d'eau de culture est produite par unité d'eau totale reçue. Une valeur élevée indique une meilleure utilisation de l'eau.
-            """, """
-            **How to read these 4 charts:**
-            
-            - **Total drainage (top left, purple)**: Lower is better. High drainage means water lost by percolation.
-            
-            - **Days in optimal zone (top right, green)**: Higher is better. A bar near 100% (or above the orange 80% line) shows great management. This is the main performance indicator.
-            
-            - **Average matric tension (bottom left, red)**: The bar should be in the **green zone (20–60 cbar)**. Too low (<20) = soil too wet; too high (>60) = water stress.
-            
-            - **Water efficiency (bottom right, orange)**: Higher is better. Metric (ETc / (I+R)) measures how much crop evapotranspiration is produced per unit of total water received. Higher means better water use.
-            """))
-            fig4, axes = plt.subplots(2, 2, figsize=(14, 10))
 
-            # Marqueurs visuels pour les phases du scénario 6
-            def apply_phase_hatches(ax):
-                """Ajoute des hachures distinctes pour les phases 1/2/3 du scénario 6."""
-                names = [s["name"] for s in comparison_data]
-                for patch, label in zip(ax.patches, names):
-                    lower = label.lower()
-                    if "phase 1" in lower:
-                        patch.set_hatch("//")
-                        patch.set_edgecolor("black")
-                    elif "phase 2" in lower:
-                        patch.set_hatch("..")
-                        patch.set_edgecolor("black")
-                    elif "phase 3" in lower:
-                        patch.set_hatch("\\\\")
-                        patch.set_edgecolor("black")
-            
-            # 4.1 : Drainage total
-            ax = axes[0, 0]
-            drainage_totals = [s["total_drainage"] for s in comparison_data]
-            ax.bar([s["name"] for s in comparison_data], drainage_totals, color="tab:purple", alpha=0.7)
-            apply_phase_hatches(ax)
-            ax.set_ylabel(lbl["total_drain"], fontsize=11)
-            ax.set_title(lbl["drainage_total"], fontsize=12, fontweight="bold")
-            ax.grid(True, alpha=0.3, axis='y')
-            for i, v in enumerate(drainage_totals):
-                ax.text(i, v, f'{v:.1f}', ha='center', va='bottom', fontsize=9)
-            
-            # 4.2 : Pourcentage de jours en confort
-            ax = axes[0, 1]
-            comfort_pct = [100 * s["days_in_comfort"] / s["total_days"] for s in comparison_data]
-            ax.bar([s["name"] for s in comparison_data], comfort_pct, color="tab:green", alpha=0.7)
-            apply_phase_hatches(ax)
-            ax.set_ylabel(tr("Pourcentage (%)", "Percentage (%)"), fontsize=11)
-            ax.set_title(lbl["days_optimal"], fontsize=12, fontweight="bold")
-            ax.set_ylim(0, 100)
-            ax.axhline(80, ls="--", color="orange", alpha=0.5, label=lbl["objective"])
-            ax.legend()
-            ax.grid(True, alpha=0.3, axis='y')
-            for i, v in enumerate(comfort_pct):
-                ax.text(i, v, f'{v:.1f}%', ha='center', va='bottom', fontsize=9)
-            
-            # 4.3 : Tension moyenne
-            ax = axes[1, 0]
-            mean_psi = [s["mean_psi"] for s in comparison_data]
-            ax.bar([s["name"] for s in comparison_data], mean_psi, color="tab:red", alpha=0.7)
-            apply_phase_hatches(ax)
-            ax.axhspan(20, 60, alpha=0.2, color="green", label=lbl["comfort_zone"])
-            ax.set_ylabel(lbl["tension"], fontsize=11)
-            ax.set_title(lbl["mean_tension"], fontsize=12, fontweight="bold")
-            ax.legend()
-            ax.grid(True, alpha=0.3, axis='y')
-            for i, v in enumerate(mean_psi):
-                ax.text(i, v, f'{v:.1f}', ha='center', va='bottom', fontsize=9)
-            
-            # 4.4 : Efficacité de l'eau (ETc / (I + R))
-            ax = axes[1, 1]
-            water_efficiency = []
-            for s in comparison_data:
-                total_input = s["total_irrigation"] + s["total_rain"]
-                if total_input > 0:
-                    efficiency = s["total_etc"] / total_input
-                else:
-                    efficiency = 0
-                water_efficiency.append(efficiency)
-            
-            ax.bar([s["name"] for s in comparison_data], water_efficiency, color="tab:orange", alpha=0.7)
-            apply_phase_hatches(ax)
-            ax.set_ylabel(lbl["eff_label"], fontsize=11)
-            ax.set_title(lbl["water_eff"], fontsize=12, fontweight="bold")
-            ax.grid(True, alpha=0.3, axis='y')
-            for i, v in enumerate(water_efficiency):
-                ax.text(i, v, f'{v:.2f}', ha='center', va='bottom', fontsize=9)
+            rows = []
+            series_by_scenario = {}
+            for name, I, R, ETc, D, psi in scenarios:
+                I = np.asarray(I, dtype=float)
+                R = np.asarray(R, dtype=float)
+                ETc = np.asarray(ETc, dtype=float)
+                D = np.asarray(D, dtype=float)
+                psi = np.asarray(psi, dtype=float)
+                S = None
+                if name == "scenario1":
+                    s = st.session_state.get("scenario1_result")
+                    if s is not None and "S" in s:
+                        S = np.asarray(s["S"][1:], dtype=float)
+                elif name == "scenario2":
+                    s = st.session_state.get("scenario2_rollout")
+                    if s is not None and "S" in s:
+                        S = np.asarray(s["S"][1:], dtype=float)
+                elif name == "scenario3":
+                    s = st.session_state.get("scenario3_rollout")
+                    if s is not None and "S" in s:
+                        S = np.asarray(s["S"][1:], dtype=float)
+                elif name == "scenario3b":
+                    s = st.session_state.get("scenario3b_rollout")
+                    if s is not None and "S" in s:
+                        S = np.asarray(s["S"][1:], dtype=float)
 
-            # Rotation des labels pour éviter le recouvrement
-            for ax in axes.flatten():
-                ax.tick_params(axis='x', labelrotation=25)
-                for lbl in ax.get_xticklabels():
-                    lbl.set_ha("right")
-            
+                water_total = float(np.sum(I + R))
+                etc_total = float(np.sum(ETc))
+                irrig_total = float(np.sum(I))
+                drainage_total = float(np.sum(D))
+                eff = float(etc_total / water_total) if water_total > 0 else 0.0
+                comfort = float(100.0 * np.mean((psi >= 20) & (psi <= 60)))
+                psi_mean = float(np.mean(psi))
+                rows.append({
+                    tr("scénario", "scenario"): scenario_labels.get(name, name),
+                    tr("irrigation_mm", "irrigation_mm"): irrig_total,
+                    tr("pluie_mm", "rain_mm"): float(np.sum(R)),
+                    tr("etc_mm", "etc_mm"): etc_total,
+                    tr("drainage_mm", "drainage_mm"): drainage_total,
+                    tr("psi_moyenne", "psi_mean"): psi_mean,
+                    tr("jours_confort_pct", "comfort_days_pct"): comfort,
+                    tr("efficacite_eau", "water_efficiency"): eff,
+                })
+                series_by_scenario[name] = {
+                    "label": scenario_labels.get(name, name),
+                    "I": I,
+                    "R": R,
+                    "ETc": ETc,
+                    "D": D,
+                    "psi": psi,
+                    "S": S,
+                    "water_total": water_total,
+                    "etc_total": etc_total,
+                    "irrig_total": irrig_total,
+                    "drainage_total": drainage_total,
+                    "eff": eff,
+                    "comfort": comfort,
+                    "psi_mean": psi_mean,
+                }
+
+            df_compare = pd.DataFrame(rows)
+            st.dataframe(df_compare, width='stretch', hide_index=True)
+
+            st.markdown(f"### {tr('📊 Graphiques comparatifs', '📊 Comparative charts')}")
+
+            # 1) Tension matricielle
+            st.markdown(f"#### 1️⃣ {tr('Tension matricielle ψ (cbar)', 'Matric tension ψ (cbar)')}")
+            fig_psi, ax_psi = plt.subplots(figsize=(12, 5))
+            for name, data in series_by_scenario.items():
+                x = np.arange(len(data["psi"]))
+                ax_psi.plot(x, data["psi"], linewidth=2, label=data["label"])
+            ax_psi.axhspan(20, 60, color="green", alpha=0.12, label=tr("Zone optimale (20-60 cbar)", "Optimal zone (20-60 cbar)"))
+            ax_psi.set_title(tr("Comparaison des tensions matricielles", "Matric tension comparison"), fontsize=16, fontweight="bold")
+            ax_psi.set_xlabel(tr("Jour", "Day"))
+            ax_psi.set_ylabel(tr("Tension ψ (cbar)", "Tension ψ (cbar)"))
+            ax_psi.grid(True, alpha=0.25)
+            ax_psi.legend()
+            st.pyplot(fig_psi)
+
+            # 2) Réserve en eau
+            st.markdown(f"#### 2️⃣ {tr('Réserve en eau S (mm)', 'Soil water storage S (mm)')}")
+            fig_s, ax_s = plt.subplots(figsize=(12, 5))
+            plotted_s = False
+            for name, data in series_by_scenario.items():
+                if data["S"] is None:
+                    continue
+                x = np.arange(len(data["S"]))
+                ax_s.plot(x, data["S"], linewidth=2, label=data["label"])
+                plotted_s = True
+            soil_params = st.session_state.get("soil_params", {}) or {}
+            zr = float(soil_params.get("Z_r", 300.0))
+            s_fc = float(soil_params.get("theta_fc", 0.22)) * zr
+            s_wp = float(soil_params.get("theta_wp", 0.12)) * zr
+            ax_s.axhline(s_fc, color="gray", linestyle="--", linewidth=1.8, label="S_fc")
+            ax_s.axhline(s_wp, color="#b5651d", linestyle="--", linewidth=1.8, label="S_wp")
+            ax_s.set_title(tr("Comparaison des réserves en eau", "Soil storage comparison"), fontsize=16, fontweight="bold")
+            ax_s.set_xlabel(tr("Jour", "Day"))
+            ax_s.set_ylabel(tr("Réserve S (mm)", "Storage S (mm)"))
+            ax_s.grid(True, alpha=0.25)
+            ax_s.legend()
+            if plotted_s:
+                st.pyplot(fig_s)
+            else:
+                st.info(tr("Aucune série S disponible pour les scénarios sélectionnés.", "No S series available for selected scenarios."))
+
+            # 3) Irrigation et pluie
+            st.markdown(f"#### 3️⃣ {tr('Irrigation et pluie (mm)', 'Irrigation and rain (mm)')}")
+            summary_df = pd.DataFrame([
+                {
+                    tr("Scénario", "Scenario"): d["label"],
+                    tr("Irrigation totale", "Total irrigation"): d["irrig_total"],
+                    tr("Pluie totale", "Total rain"): float(np.sum(d["R"])),
+                }
+                for d in series_by_scenario.values()
+            ])
+            fig_ir, ax_ir = plt.subplots(figsize=(12, 5))
+            x = np.arange(len(summary_df))
+            w = 0.4
+            irr_col = tr("Irrigation totale", "Total irrigation")
+            rain_col = tr("Pluie totale", "Total rain")
+            ax_ir.bar(x - w / 2, summary_df[irr_col], width=w, color="#4c9fd1", label=irr_col)
+            ax_ir.bar(x + w / 2, summary_df[rain_col], width=w, color="#58d1d8", label=rain_col)
+            for i, v in enumerate(summary_df[irr_col]):
+                ax_ir.text(i - w / 2, v, f"{v:.1f}", ha="center", va="bottom", fontsize=9)
+            for i, v in enumerate(summary_df[rain_col]):
+                ax_ir.text(i + w / 2, v, f"{v:.1f}", ha="center", va="bottom", fontsize=9)
+            ax_ir.set_xticks(x)
+            ax_ir.set_xticklabels(summary_df[tr("Scénario", "Scenario")], rotation=20)
+            ax_ir.set_ylabel(tr("Volume d'eau (mm)", "Water volume (mm)"))
+            ax_ir.set_title(tr("Comparaison des volumes d'eau (irrigation + pluie)", "Water volumes comparison (irrigation + rain)"), fontsize=16, fontweight="bold")
+            ax_ir.grid(True, axis="y", alpha=0.25)
+            ax_ir.legend()
+            st.pyplot(fig_ir)
+
+            # 4) Métriques de performance
+            st.markdown(f"#### 4️⃣ {tr('Métriques de performance', 'Performance metrics')}")
+            labels = [d["label"] for d in series_by_scenario.values()]
+            drainage_vals = [d["drainage_total"] for d in series_by_scenario.values()]
+            comfort_vals = [d["comfort"] for d in series_by_scenario.values()]
+            psi_mean_vals = [d["psi_mean"] for d in series_by_scenario.values()]
+            eff_vals = [d["eff"] for d in series_by_scenario.values()]
+            fig_perf, axs = plt.subplots(2, 2, figsize=(12, 8))
+
+            axs[0, 0].bar(labels, drainage_vals, color="#a78ac3")
+            axs[0, 0].set_title(tr("Drainage total", "Total drainage"), fontweight="bold")
+            axs[0, 0].set_ylabel("mm")
+            axs[0, 0].grid(True, axis="y", alpha=0.25)
+            for i, v in enumerate(drainage_vals):
+                axs[0, 0].text(i, v, f"{v:.1f}", ha="center", va="bottom", fontsize=9)
+
+            axs[0, 1].bar(labels, comfort_vals, color="#69b96b")
+            axs[0, 1].axhline(80, color="orange", linestyle="--", label=tr("Objectif 80%", "80% target"))
+            axs[0, 1].set_title(tr("Jours en zone optimale (20-60 cbar)", "Days in optimal zone (20-60 cbar)"), fontweight="bold")
+            axs[0, 1].set_ylabel("%")
+            axs[0, 1].grid(True, axis="y", alpha=0.25)
+            axs[0, 1].legend()
+            for i, v in enumerate(comfort_vals):
+                axs[0, 1].text(i, v, f"{v:.1f}%", ha="center", va="bottom", fontsize=9)
+
+            axs[1, 0].bar(labels, psi_mean_vals, color="#dd6666")
+            axs[1, 0].axhspan(20, 60, color="green", alpha=0.2, label=tr("Zone optimale (20-60 cbar)", "Optimal zone (20-60 cbar)"))
+            axs[1, 0].set_title(tr("Tension matricielle moyenne", "Average matric tension"), fontweight="bold")
+            axs[1, 0].set_ylabel("cbar")
+            axs[1, 0].grid(True, axis="y", alpha=0.25)
+            axs[1, 0].legend()
+            for i, v in enumerate(psi_mean_vals):
+                axs[1, 0].text(i, v, f"{v:.1f}", ha="center", va="bottom", fontsize=9)
+
+            axs[1, 1].bar(labels, eff_vals, color="#f2a04f")
+            axs[1, 1].set_title(tr("Efficacité de l'eau (ETc / (I+R))", "Water efficiency (ETc / (I+R))"), fontweight="bold")
+            axs[1, 1].set_ylabel(tr("Efficacité", "Efficiency"))
+            axs[1, 1].grid(True, axis="y", alpha=0.25)
+            for i, v in enumerate(eff_vals):
+                axs[1, 1].text(i, v, f"{v:.2f}", ha="center", va="bottom", fontsize=9)
+
+            for ax in axs.flat:
+                ax.tick_params(axis="x", rotation=20)
             plt.tight_layout()
-            st.pyplot(fig4)
-            
-            # Analyse comparative textuelle
+            st.pyplot(fig_perf)
+
             st.markdown("---")
-            st.markdown(tr("### 📝 Analyse comparative", "### 📝 Comparative analysis"))
-            
-            # Trouver le meilleur scénario pour chaque métrique
-            best_comfort = max(comparison_data, key=lambda x: x["days_in_comfort"] / x["total_days"])
-            best_efficiency = max(comparison_data, key=lambda x: x["total_etc"] / (x["total_irrigation"] + x["total_rain"]) if (x["total_irrigation"] + x["total_rain"]) > 0 else 0)
-            lowest_drainage = min(comparison_data, key=lambda x: x["total_drainage"])
-            lowest_irrigation = min(comparison_data, key=lambda x: x["total_irrigation"])
-            
-            st.markdown(tr(f"""
-            **Résultats de la comparaison :**
-            
-            - **Meilleur maintien en zone de confort** : {best_comfort["name"]} 
-              ({100*best_comfort["days_in_comfort"]/best_comfort["total_days"]:.1f}% des jours en zone optimale)
-            
-            - **Meilleure efficacité de l'eau** : {best_efficiency["name"]} 
-              (ETc / (I+R) = {best_efficiency["total_etc"]/(best_efficiency["total_irrigation"] + best_efficiency["total_rain"]):.3f})
-            
-            - **Drainage le plus faible** : {lowest_drainage["name"]} 
-              ({lowest_drainage["total_drainage"]:.1f} mm de drainage total)
-            
-            - **Consommation d'eau la plus faible** : {lowest_irrigation["name"]} 
-              ({lowest_irrigation["total_irrigation"]:.1f} mm d'irrigation totale)
-            """, f"""
-            **Comparison results:**
-            
-            - **Best comfort zone maintenance**: {best_comfort["name"]} 
-              ({100*best_comfort["days_in_comfort"]/best_comfort["total_days"]:.1f}% of days in the optimal zone)
-            
-            - **Best water efficiency**: {best_efficiency["name"]} 
-              (ETc / (I+R) = {best_efficiency["total_etc"]/(best_efficiency["total_irrigation"] + best_efficiency["total_rain"]):.3f})
-            
-            - **Lowest drainage**: {lowest_drainage["name"]} 
-              ({lowest_drainage["total_drainage"]:.1f} mm total drainage)
-            
-            - **Lowest irrigation use**: {lowest_irrigation["name"]} 
-              ({lowest_irrigation["total_irrigation"]:.1f} mm total irrigation)
-            """))
-            
-            # Téléchargement des données comparatives
-            st.markdown("---")
-            st.markdown(tr("### 📥 Téléchargement", "### 📥 Download"))
-            
-            csv_comparison = df_comparison.to_csv(index=False)
-            st.download_button(
-                label=tr("📥 Télécharger le tableau comparatif (CSV)", "📥 Download comparison table (CSV)"),
-                data=csv_comparison,
-                file_name="scenarios_comparison.csv",
-                mime="text/csv"
+            best_comfort = max(series_by_scenario.values(), key=lambda d: d["comfort"])
+            best_eff = max(series_by_scenario.values(), key=lambda d: d["eff"])
+            best_drain = min(series_by_scenario.values(), key=lambda d: d["drainage_total"])
+            best_irrig = min(series_by_scenario.values(), key=lambda d: d["irrig_total"])
+            lbl_best_comfort = tr("Meilleur maintien en zone de confort", "Best comfort-zone performance")
+            lbl_best_eff = tr("Meilleure efficacité de l'eau", "Best water efficiency")
+            lbl_best_drain = tr("Drainage le plus faible", "Lowest drainage")
+            lbl_best_irrig = tr("Consommation d'eau la plus faible", "Lowest irrigation use")
+            st.markdown(f"### {tr('📝 Analyse comparative', '📝 Comparative analysis')}")
+            st.markdown(
+                "\n".join(
+                    [
+                        f"- **{lbl_best_comfort}**: {best_comfort['label']} ({best_comfort['comfort']:.1f}%)",
+                        f"- **{lbl_best_eff}**: {best_eff['label']} ({best_eff['eff']:.3f})",
+                        f"- **{lbl_best_drain}**: {best_drain['label']} ({best_drain['drainage_total']:.1f} mm)",
+                        f"- **{lbl_best_irrig}**: {best_irrig['label']} ({best_irrig['irrig_total']:.1f} mm)",
+                    ]
+                )
             )
 
-    st.divider()
+            csv = df_compare.to_csv(index=False)
+            st.download_button(
+                label=tr("📥 Télécharger le tableau comparatif (CSV)", "📥 Download comparison table (CSV)"),
+                data=csv,
+                file_name="scenario_comparison.csv",
+                mime="text/csv",
+            )
 
+    with tab8:
+        language = st.session_state.get("ui_language", "fr")
+        tr = lambda fr, en: fr if language == "fr" else en
 
+        st.markdown(f'<h2 class="section-header">{tr("🧪 Validation ERA5-Land (avancée)", "🧪 Advanced ERA5-Land validation")}</h2>', unsafe_allow_html=True)
+        st.markdown(
+            "<div style='height:4px; width:100%; background:#2f80ed; border-radius:4px; margin:0 0 14px 0;'></div>",
+            unsafe_allow_html=True,
+        )
+        st.info(
+            tr(
+                "ℹ️ Cette section sert à comparer un scénario déjà simulé/évalué avec un fichier ERA5-Land de référence afin d'obtenir des métriques (bias, RMSE, KGE).",
+                "ℹ️ Use this section to compare an already simulated/evaluated scenario against an ERA5-Land reference file and compute validation metrics (bias, RMSE, KGE).",
+            )
+        )
+
+        model_option = st.radio(
+            "",
+            options=["scenario1", "scenario2", "scenario3", "scenario3b"],
+            horizontal=True,
+            label_visibility="collapsed",
+        )
+        era5_path = st.text_input(
+            tr("Chemin fichier ERA5-Land (.nc)", "ERA5-Land file path (.nc)"),
+            value=st.session_state.get("era5_path", ""),
+        )
+
+        if st.button(tr("Lancer validation", "Run validation"), type="primary"):
+            if not era5_path:
+                st.error(tr("Veuillez renseigner un fichier ERA5-Land.", "Please provide an ERA5-Land file."))
+            else:
+                try:
+                    era_bundle = load_data_for_simulation(
+                        data_source="era5_land",
+                        file_path=era5_path,
+                        resample_freq="1D",
+                    )
+
+                    if model_option == "scenario1":
+                        sim = st.session_state.get("scenario1_result")
+                        if sim is None:
+                            st.error(tr("Scénario 1 non disponible.", "Scenario 1 not available."))
+                            st.stop()
+                        sim_outputs = {
+                            "rain": sim.get("rain"),
+                            "ETc": sim.get("ETc"),
+                            "psi": sim.get("psi"),
+                            "S": sim.get("S"),
+                            "fluxes": {"runoff": sim.get("D")},
+                            "soil_moisture_layers": {"bucket_total_mm": sim.get("S")},
+                        }
+                    else:
+                        key = {
+                            "scenario2": "scenario2_rollout",
+                            "scenario3": "scenario3_rollout",
+                            "scenario3b": "scenario3b_rollout",
+                        }[model_option]
+                        rollout = st.session_state.get(key)
+                        if rollout is None:
+                            st.error(tr("Aucun rollout disponible pour ce scénario.", "No rollout available for this scenario."))
+                            st.stop()
+                        sim_outputs = rollout_to_sim_outputs(rollout)
+
+                    results = summarize_era5_land_validation(sim_outputs, era_bundle)
+                    st.markdown(format_validation_table(results))
+                    st.json(results)
+                except Exception as exc:
+                    st.error(f"Validation ERA5-Land échouée: {exc}")
 if __name__ == "__main__":
     main()
